@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0d1017" />
+    <link rel="icon" href="./favicon.svg" />
+    <title>元素沙盒 · 解压物理玩具</title>
+    <script>
+      // 启动看门狗：ES 模块被 CORS / 纯静态伺服拦住时给出明白指引，而不是白屏
+      (function () {
+        window.__sbBooted = function () {
+          window.__sbBooted.done = true;
+        };
+        setTimeout(function () {
+          if (window.__sbBooted.done) return;
+          // 模块脚本还在加载时 load 事件不会完成，完成但仍未启动 = 模块图挂了
+          if (document.readyState !== 'complete') return;
+          var bar = document.createElement('div');
+          bar.style.cssText =
+            'position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#1a2233;' +
+            'color:#dfe8f5;border:1px solid rgba(126,200,255,.4);border-radius:12px;padding:14px 18px;' +
+            'font:14px/1.8 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.5)';
+          bar.innerHTML =
+            '⚠️ 游戏没有启动——当前打开方式跑不了 ES 模块。<br>' +
+            '本地双击预览：打开 <b>单文件版.html</b>　·　源码开发：<code>npm run dev</code>　·　' +
+            '构建产物预览：<code>npm run preview</code>';
+          document.body.appendChild(bar);
+        }, 2500);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <div class="logo"><img src="./favicon.svg" class="logo-icon" alt="元素沙盒" />元素沙盒</div>
+        <div class="head-right">
+          <button id="btn-bg" class="ghost">🌌<span class="btn-label"> 背景</span></button>
+          <button id="btn-map" class="ghost">🗺️<span class="btn-label"> 地图</span></button>
+          <button id="btn-ach" class="ghost">🏆<span class="btn-label"> 成就 </span><b id="ach-badge">0/40</b></button>
+          <button id="btn-book" class="ghost">📖<span class="btn-label"> 图鉴 </span><b id="disc-badge">0/23</b></button>
+          <button id="btn-3d" class="ghost">🧊<span class="btn-label"> 3D·测试版</span></button>
+          <button id="btn-sound" class="ghost">🎵<span class="btn-label"> 音效</span></button>
+        </div>
+      </header>
+      <main id="game-wrap">
+        <div id="hint">👆 按住画布，落下你的第一粒沙</div>
+        <div id="paused-chip" hidden>⏸ 已暂停（仍可布置场景）</div>
+      </main>
+      <footer id="toolbar">
+        <div id="elem-row"></div>
+        <div id="tool-row">
+          <div class="brush">
+            <span class="lbl">笔刷</span>
+            <button id="brush-minus">−</button>
+            <span id="brush-dot"></span>
+            <button id="brush-plus">＋</button>
+          </div>
+          <span class="sep"></span>
+          <button id="btn-pause" class="tool" title="暂停/继续">⏸</button>
+          <button id="btn-clear" class="tool" title="清空画布">🧹</button>
+          <button id="btn-export" class="tool" title="导出 PNG">📷</button>
+          <button id="btn-restore" class="tool" title="一键恢复当前地图">🔄</button>
+          <button id="btn-snapshot" class="tool" title="导出场景 JSON（3D 查看器用）">📦</button>
+          <button id="btn-share" class="tool" title="分享 / 导入世界码">🔗</button>
+        </div>
+      </footer>
+    </div>
+    <div id="toast"></div>
+    <div id="ach-toasts"></div>
+    <div id="bg-menu" hidden></div>
+    <div id="map-modal" hidden>
+      <div id="map-card">
+        <div class="modal-head">
+          <b>选择初始地图</b>
+          <button id="map-close">✕</button>
+        </div>
+        <div id="map-grid"></div>
+        <p class="modal-tip">选择后立即生成新世界，替换当前地形</p>
+      </div>
+    </div>
+    <div id="ach-modal" hidden>
+      <div id="ach-card">
+        <div class="modal-head">
+          <b>成就</b>
+          <button id="ach-close">✕</button>
+        </div>
+        <div id="ach-list"></div>
+      </div>
+    </div>
+    <div id="modal" hidden>
+      <div id="modal-card">
+        <div class="modal-head">
+          <b>发现图鉴</b>
+          <button id="modal-close">✕</button>
+        </div>
+        <div id="modal-grid"></div>
+        <p class="modal-tip">在沙盒里触发新的元素反应，就能点亮图鉴</p>
+      </div>
+    </div>
+    <div id="share-modal" hidden>
+      <div id="share-card">
+        <div class="modal-head">
+          <b>分享 / 导入世界</b>
+          <button id="share-close">✕</button>
+        </div>
+        <div class="share-sec">
+          <div class="share-lbl">当前世界的分享码</div>
+          <textarea id="share-out" readonly spellcheck="false"></textarea>
+          <button id="share-copy" class="share-btn">📋 复制分享码</button>
+        </div>
+        <div class="share-sec">
+          <div class="share-lbl">导入：粘贴别人的分享码</div>
+          <textarea id="share-in" placeholder="粘贴分享码…" spellcheck="false"></textarea>
+          <button id="share-import" class="share-btn">📥 导入到当前画布</button>
+        </div>
+        <p class="modal-tip">分享码即整个画面；屏幕尺寸不同会自动适配（水平居中、地形沉底）</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

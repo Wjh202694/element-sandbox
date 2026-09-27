@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-09-27T07:20:34.447Z",
+  "sessionId": "sess_d79a6d52-d641-441b-931d-7d8c12aab057",
+  "event": "PostToolUse",
+  "toolName": "Write",
+  "file": "C:\\Users\\Wjh20\\Downloads\\创意工作\\元素沙盒\\viewer\\README.md",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 9,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

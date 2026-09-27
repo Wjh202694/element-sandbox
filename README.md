@@ -1,5 +1,7 @@
 # 元素沙盒 ⛰️🔥💧
 
+**🎮 在线游玩：https://wjh202694.github.io/element-sandbox/**
+
 涌现式像素物理解压小游戏。沙、水、火、油、植物、熔岩、火药、盐、酸在手机屏幕上相生相克——放火烧山、引水浇灭、种树成林、沙遇熔岩化玻璃、火药殉爆冲天，画面每一秒都不重样。
 
 **特色玩法：配方发现图鉴** —— 首次触发某个元素反应（如火×水→蒸汽）时弹出「新发现」，共 23 条收集目标（含火药受潮、酸皂化、玻璃重熔、毒雾、盐渍枯萎、融雪），让沙盒从玩具变成有探索目标的游戏。
@@ -62,4 +64,11 @@ node tools/sim-test.mjs   # 无头跑模拟核心 41 项：下落/堆积/密度�
 
 - 更多元素与反应条目（酸+活物、盐水体系等）
 - 每日挑战地形种子、作品画廊
-- 上线部署 CloudBase 静态托管 / GitHub Pages
+- 云排行榜
+
+## 部署
+
+- **线上地址**：https://wjh202694.github.io/element-sandbox/ （GitHub Pages）
+- **仓库**：https://github.com/Wjh202694/element-sandbox （公开仓库）
+- **自动部署**：`.github/workflows/deploy.yml` 监听 main 分支——每次 `git push` 自动 `npm ci && npm run build` 并发布到 Pages，约 1 分钟生效
+- 本地仓库初始化时 Pages 由 API 开通（`gh api -X POST repos/:owner/:repo/pages -f build_type=workflow`）；工作流内默认 token 无权首次建站，属正常现象

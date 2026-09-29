@@ -3,16 +3,16 @@ import { state } from './store.js';
 import { setPausedChip } from './overlay.js';
 import { getMapId } from '../utils/storage.js';
 import { exportPNG } from '../utils/export.js';
+import { elementIcon, systemIcon } from '../icons/index.js';
 
 export function initToolbar() {
   const row = document.getElementById('elem-row');
 
-  const mk = (id, label, swatch) => {
+  const mk = (id, label, ico) => {
     const b = document.createElement('button');
     b.className = 'elem';
-    b.innerHTML = swatch
-      ? `<i style="background:${swatch}"></i><span>${label}</span>`
-      : `🧽<span>${label}</span>`;
+    b.title = label;
+    b.innerHTML = `${elementIcon(ico, 'elem-ico')}<span>${label}</span>`;
     b.onclick = () => {
       state.elem = id;
       row.querySelectorAll('.elem').forEach((x) => x.classList.toggle('sel', x === b));
@@ -20,8 +20,8 @@ export function initToolbar() {
     row.appendChild(b);
   };
 
-  for (const id of PALETTE) mk(id, EL[id].name, EL[id].swatch);
-  mk(E.EMPTY, '擦', null);
+  for (const id of PALETTE) mk(id, EL[id].name, EL[id].ico);
+  mk(E.EMPTY, '擦', EL[E.EMPTY].ico);
   row.firstChild.classList.add('sel');
 
   // 笔刷大小
@@ -45,25 +45,26 @@ export function initToolbar() {
   const pauseBtn = document.getElementById('btn-pause');
   pauseBtn.onclick = () => {
     state.paused = !state.paused;
-    pauseBtn.textContent = state.paused ? '▶' : '⏸';
+    pauseBtn.innerHTML = systemIcon(state.paused ? 'play' : 'pause', 'tool-ico');
     setPausedChip(state.paused);
   };
 
   // 清空（两步确认，防误触）
   const clearBtn = document.getElementById('btn-clear');
   let armTimer = null;
+  const clearIdle = () => { clearBtn.innerHTML = systemIcon('cleaner', 'tool-ico'); };
   clearBtn.onclick = () => {
     if (clearBtn.dataset.arm) {
       clearTimeout(armTimer);
       delete clearBtn.dataset.arm;
-      clearBtn.textContent = '🧹';
+      clearIdle();
       document.dispatchEvent(new CustomEvent('sb-clear'));
     } else {
       clearBtn.dataset.arm = '1';
       clearBtn.textContent = '确认？';
       armTimer = setTimeout(() => {
         delete clearBtn.dataset.arm;
-        clearBtn.textContent = '🧹';
+        clearIdle();
       }, 2000);
     }
   };

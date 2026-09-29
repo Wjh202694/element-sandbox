@@ -1,6 +1,7 @@
 import { GRID } from '../sim/elements.js';
 import { showToast } from './toast.js';
 import { encodeShareCode, decodeShareCode, resampleToGrid } from '../utils/shareCode.js';
+import { systemIcon } from '../icons/index.js';
 
 // 分享 / 导入世界：一串 base64url 文本即可把整个画面发给朋友
 export function initShare() {
@@ -11,14 +12,14 @@ export function initShare() {
   document.getElementById('btn-share').onclick = () => {
     const world = window.__sb?.world;
     if (!world) {
-      showToast('⚠️ 场景尚未就绪，稍后再试');
+      showToast('场景尚未就绪，稍后再试', systemIcon('alert', 'toast-ico'));
       return;
     }
     try {
       out.value = encodeShareCode(world);
     } catch {
       out.value = '';
-      showToast('⚠️ 分享码生成失败');
+      showToast('分享码生成失败', systemIcon('alert', 'toast-ico'));
     }
     input.value = '';
     modal.hidden = false;
@@ -34,19 +35,19 @@ export function initShare() {
     if (!out.value) return;
     try {
       await navigator.clipboard.writeText(out.value);
-      showToast('📋 分享码已复制，去粘贴给朋友吧');
+      showToast('分享码已复制，去粘贴给朋友吧', systemIcon('copy', 'toast-ico'));
     } catch {
       // 剪贴板权限受限（file:// 等）：退化为选中文本让用户手动 Ctrl+C
       out.focus();
       out.select();
-      showToast('📋 已选中分享码，请按 Ctrl+C 复制');
+      showToast('已选中分享码，请按 Ctrl+C 复制', systemIcon('copy', 'toast-ico'));
     }
   };
 
   document.getElementById('share-import').onclick = () => {
     const decoded = decodeShareCode(input.value);
     if (!decoded) {
-      showToast('⚠️ 分享码无效或已损坏');
+      showToast('分享码无效或已损坏', systemIcon('alert', 'toast-ico'));
       return;
     }
     const cells = resampleToGrid(decoded, GRID.w, GRID.h);

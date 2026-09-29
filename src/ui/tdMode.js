@@ -1,6 +1,7 @@
 import { state } from './store.js';
 import { showToast } from './toast.js';
 import { stat3D } from '../sim/stats.js';
+import { systemIcon } from '../icons/index.js';
 
 // three 体量很大，动态加载：点开 3D 才拉取，首屏不背这个包
 let scene3dModule = null;
@@ -23,7 +24,7 @@ export function init3DMode() {
     if (!state.tdMode) {
       const world = getWorld();
       if (!world) {
-        showToast('⚠️ 场景尚未就绪，稍后再试');
+        showToast('场景尚未就绪，稍后再试', systemIcon('alert', 'toast-ico'));
         return;
       }
       busy = true;
@@ -31,7 +32,7 @@ export function init3DMode() {
         const { create3DScene } = await loadScene3D();
         dispose = create3DScene(world, wrap, window.__sb.renderer);
       } catch (e) {
-        showToast('⚠️ 3D 初始化失败（测试版）：' + e.message);
+        showToast('3D 初始化失败（测试版）：' + e.message, systemIcon('alert', 'toast-ico'))
         busy = false;
         return;
       }
@@ -41,7 +42,7 @@ export function init3DMode() {
       btn.classList.add('sel');
       stat3D();
       if (!hinted) {
-        showToast('🧊 3D 立体模式（测试版）：拖拽旋转 · 滚轮缩放 · 暂停作画');
+        showToast('3D 立体模式（测试版）：拖拽旋转 · 滚轮缩放 · 暂停作画', systemIcon('cube', 'toast-ico'));
         hinted = true;
       }
     } else {

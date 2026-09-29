@@ -1,5 +1,7 @@
 // ===== 合成音效：WebAudio 现场合成，零素材 =====
 // 倒料白噪（按元素家族换滤波）+ 爆炸闷响 + 成就/发现提示音。开关持久化。
+import { systemIcon } from '../icons/index.js';
+
 const KEY = 'sandbox.sound.v1';
 
 let ctx = null;
@@ -155,9 +157,9 @@ export function initSound() {
   const btn = document.getElementById('btn-sound');
   if (!btn) return;
   const sync = () => {
-    btn.innerHTML = enabled
-      ? '🎵<span class="btn-label"> 音效</span>'
-      : '🔇<span class="btn-label"> 音效</span>';
+    btn.innerHTML =
+      (enabled ? systemIcon('sound', 'hd-ico') : systemIcon('mute', 'hd-ico')) +
+      '<span class="btn-label">音效</span>';
   };
   sync();
   btn.onclick = () => {

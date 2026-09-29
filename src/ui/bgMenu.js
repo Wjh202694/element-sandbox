@@ -2,6 +2,7 @@ import { THEMES } from '../sim/backgrounds.js';
 import { state } from './store.js';
 import { statTheme } from '../sim/stats.js';
 import { loadTheme, saveTheme } from '../utils/storage.js';
+import { themeIcon } from '../icons/index.js';
 
 export function initBgMenu() {
   const btn = document.getElementById('btn-bg');
@@ -14,7 +15,7 @@ export function initBgMenu() {
     const item = document.createElement('button');
     item.className = 'bg-item';
     item.dataset.id = t.id;
-    item.innerHTML = `<span class="bg-icon">${t.icon}</span><span>${t.name}</span><i class="bg-check"></i>`;
+    item.innerHTML = `<span class="bg-icon">${themeIcon(t.icon, 'bg-ico')}</span><span>${t.name}</span><i class="bg-check"></i>`;
     item.onclick = () => {
       state.theme = t.id;
       saveTheme(t.id);

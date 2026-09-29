@@ -13,6 +13,7 @@ import { syncHint, hideHint } from '../ui/overlay.js';
 import { loadWorld, saveWorld, getMapId, saveMapId } from '../utils/storage.js';
 import { buildSnapshot, downloadScene } from '../utils/exportScene.js';
 import { pourBegin, pourEnd, boom } from '../ui/sound.js';
+import { elementIcon, biomeIcon, systemIcon } from '../icons/index.js';
 
 export default class SimScene extends Phaser.Scene {
   constructor() {
@@ -38,7 +39,7 @@ export default class SimScene extends Phaser.Scene {
     this.mapObj = MAPS.find((m) => m.id === getMapId());
     document.addEventListener('sb-map-event', (e) => {
       statMapEvent();
-      showToast(e.detail);
+      showToast(e.detail.text, elementIcon(e.detail.icon, 'toast-ico'));
     });
     document.addEventListener('sb-newworld', (e) => {
       const map = MAPS.find((m) => m.id === e.detail);
@@ -50,7 +51,7 @@ export default class SimScene extends Phaser.Scene {
       saveWorld(this.world);
       this.world.dirty = false;
       this.mapObj = map;
-      showToast(`🗺️ 已生成：${map.name}`);
+      showToast(`已生成：${map.name}`, biomeIcon(map.icon, 'toast-ico'));
     });
 
     const tex = this.textures.createCanvas('world', GRID.w, GRID.h);
@@ -120,7 +121,7 @@ export default class SimScene extends Phaser.Scene {
       this.world.dirty = false;
       statWorldGen();
       hideHint();
-      showToast(`📥 世界已导入（${e.detail.fit}）`);
+      showToast(`世界已导入（${e.detail.fit}）`, systemIcon('import', 'toast-ico'));
     });
     // 调试钩子：控制台可经 window.__sb 访问场景（跳时间、检查世界）
     window.__sb = this;

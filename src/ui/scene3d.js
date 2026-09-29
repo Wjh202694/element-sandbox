@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
+import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
 
 function hexRgb(hex) {
@@ -604,7 +605,7 @@ export function create3DScene(world, host, renderer2d) {
     scene.fog.far = maxDim * 3.4;
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(liveSync, 120);
-    toggleBtn.textContent = '🏝 返回火山岛';
+    toggleBtn.innerHTML = biomeIcon('volcano', 'td-ico') + '<span>返回火山岛</span>';
   }
 
   function exitLive() {
@@ -816,7 +817,7 @@ export function create3DScene(world, host, renderer2d) {
     controls.maxDistance = S * 2.6;
     scene.fog.near = S * 1.2;
     scene.fog.far = S * 3.2;
-    toggleBtn.textContent = '🖼 实景同步';
+    toggleBtn.innerHTML = systemIcon('mirror', 'td-ico') + '<span>实景同步</span>';
   }
 
   function enterIsland() {
@@ -833,7 +834,7 @@ export function create3DScene(world, host, renderer2d) {
     controls.maxDistance = S * 2.4;
     scene.fog.near = S * 0.9;
     scene.fog.far = S * 2.6;
-    toggleBtn.textContent = '🌊 海岛';
+    toggleBtn.innerHTML = biomeIcon('archipelago', 'td-ico') + '<span>海岛</span>';
   }
 
   function tickSea() {
@@ -951,7 +952,7 @@ export function create3DScene(world, host, renderer2d) {
   toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'td3d-toggle';
-  toggleBtn.textContent = '🌊 海岛';
+  toggleBtn.innerHTML = biomeIcon('archipelago', 'td-ico') + '<span>海岛</span>';
   toggleBtn.title = '切换观赏对象：火山岛 → 海岛 → 实景同步（海岛与实景实时同步喷发与流动）';
   toggleBtn.onclick = () => {
     if (mode === 'island') seaStart();

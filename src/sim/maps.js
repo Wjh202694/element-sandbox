@@ -174,7 +174,7 @@ function archipelagoTick(w, frame) {
   if (frame % STORM_CYCLE < STORM_WINDOW && frame % 50 === 0) {
     lightningBolt(w, (Math.random() * w.w) | 0);
     if (frame % STORM_CYCLE === 0 && typeof document !== 'undefined') {
-      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: '⚡ 雷暴来袭！' }));
+      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '雷暴来袭！', icon: 'electric' } }));
     }
   }
   if (frame < 2400) return;
@@ -191,7 +191,7 @@ function archipelagoTick(w, frame) {
   }
   // UI 事件可选（node 无头环境下无 document）
   if (typeof document !== 'undefined') {
-    document.dispatchEvent(new CustomEvent('sb-map-event', { detail: '🌊 海啸来了！' }));
+    document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '海啸来了！', icon: 'water' } }));
   }
 }
 
@@ -509,14 +509,15 @@ function cityGen(w) {
   blob(w, px + 4, groundY - 3, 3, 2, E.PLANT);
 }
 
+// icon 为制图平涂场景缩略图 key，取值见 src/icons/index.js 的 biomeIcon()
 export const MAPS = [
-  { id: 'blank', name: '空白画布', icon: '⬜', desc: '一张白纸，随心创作', gen: blank },
-  { id: 'forest', name: '青山林', icon: '🌲', desc: '密林环绕一株参天大树', gen: forest },
-  { id: 'archipelago', name: '群岛', icon: '🏝️', desc: '沙岛礁石珊瑚，每分钟交替海啸，偶有雷暴', gen: archipelagoGen, tick: archipelagoTick },
-  { id: 'volcano', name: '火山', icon: '🌋', desc: '岩浆纹路布满山体，周期喷发', gen: volcanoGen, tick: volcanoTick },
-  { id: 'canyon', name: '峡谷', icon: '🏔️', desc: '峭壁之间一条河', gen: canyon },
-  { id: 'desert', name: '沙漠', icon: '🏜️', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },
-  { id: 'city', name: '玻璃之城', icon: '🏙️', desc: '高楼林立的方块都市', gen: cityGen },
+  { id: 'blank', name: '空白画布', icon: 'blank', desc: '一张白纸，随心创作', gen: blank },
+  { id: 'forest', name: '青山林', icon: 'green-forest', desc: '密林环绕一株参天大树', gen: forest },
+  { id: 'archipelago', name: '群岛', icon: 'archipelago', desc: '沙岛礁石珊瑚，每分钟交替海啸，偶有雷暴', gen: archipelagoGen, tick: archipelagoTick },
+  { id: 'volcano', name: '火山', icon: 'volcano', desc: '岩浆纹路布满山体，周期喷发', gen: volcanoGen, tick: volcanoTick },
+  { id: 'canyon', name: '峡谷', icon: 'canyon', desc: '峭壁之间一条河', gen: canyon },
+  { id: 'desert', name: '沙漠', icon: 'desert', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },
+  { id: 'city', name: '玻璃之城', icon: 'glass-city', desc: '高楼林立的方块都市', gen: cityGen },
 ];
 
 export function generateMap(world, id) {

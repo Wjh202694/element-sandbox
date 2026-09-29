@@ -24,10 +24,10 @@
             'position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#1a2233;' +
             'color:#dfe8f5;border:1px solid rgba(126,200,255,.4);border-radius:12px;padding:14px 18px;' +
             'font:14px/1.8 system-ui,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.5)';
-          bar.innerHTML =
-            '⚠️ 游戏没有启动——当前打开方式跑不了 ES 模块。<br>' +
-            '本地双击预览：打开 <b>单文件版.html</b>　·　源码开发：<code>npm run dev</code>　·　' +
-            '构建产物预览：<code>npm run preview</code>';
+          bar.textContent =
+            '游戏没有启动——当前打开方式跑不了 ES 模块。' +
+            '本地双击预览：打开 单文件版.html　·　源码开发：npm run dev　·　' +
+            '构建产物预览：npm run preview';
           document.body.appendChild(bar);
         }, 2500);
       })();
@@ -38,34 +38,74 @@
       <header>
         <div class="logo"><img src="./favicon.svg" class="logo-icon" alt="元素沙盒" />元素沙盒</div>
         <div class="head-right">
-          <button id="btn-bg" class="ghost">🌌<span class="btn-label"> 背景</span></button>
-          <button id="btn-map" class="ghost">🗺️<span class="btn-label"> 地图</span></button>
-          <button id="btn-ach" class="ghost">🏆<span class="btn-label"> 成就 </span><b id="ach-badge">0/40</b></button>
-          <button id="btn-book" class="ghost">📖<span class="btn-label"> 图鉴 </span><b id="disc-badge">0/23</b></button>
-          <button id="btn-3d" class="ghost">🧊<span class="btn-label"> 3D·测试版</span></button>
-          <button id="btn-sound" class="ghost">🎵<span class="btn-label"> 音效</span></button>
+          <button id="btn-bg" class="ghost" title="背景">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect x="3.5" y="6" width="25" height="20" rx="2.5"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3.5 19.5 H28.5"/></g><path d="M20 12.4 A4.2 4.2 0 1 0 20 19.6 Z" fill="currentColor"/><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".9"><path d="M7.5 23 H13"/><path d="M17 23.6 H24.5"/></g></svg
+            ><span class="btn-label">背景</span>
+          </button>
+          <button id="btn-map" class="ghost" title="地图">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3.5 8 L11 4.5 L21 8 L28.5 4.5 V24 L21 27.5 L11 24 L3.5 27.5 Z"/><path d="M11 4.5 V24"/><path d="M21 8 V27.5"/></g><circle cx="16" cy="15.5" r="2.4" fill="currentColor"/></svg
+            ><span class="btn-label">地图</span>
+          </button>
+          <button id="btn-ach" class="ghost" title="成就">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M10 5.5 H22 V14 A6 6 0 0 1 16 20 A6 6 0 0 1 10 14 Z"/><path d="M10 8 H6 V10.5 A3.5 3.5 0 0 0 9.5 14"/><path d="M22 8 H26 V10.5 A3.5 3.5 0 0 1 22.5 14"/><path d="M16 20 V24.5"/><path d="M11 27 H21"/><path d="M13 24.5 H19"/></g></svg
+            ><span class="btn-label">成就</span><b id="ach-badge">0/40</b>
+          </button>
+          <button id="btn-book" class="ghost" title="图鉴">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M4 6.5 H12.5 A3.5 3.5 0 0 1 16 10 V26 A3.5 3.5 0 0 0 12.5 22.5 H4 Z"/><path d="M28 6.5 H19.5 A3.5 3.5 0 0 0 16 10 V26 A3.5 3.5 0 0 1 19.5 22.5 H28 Z"/><path d="M16 10 V26"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".85"><path d="M7 12 H11.5"/><path d="M20.5 12 H25"/></g></svg
+            ><span class="btn-label">图鉴</span><b id="disc-badge">0/23</b>
+          </button>
+          <button id="btn-3d" class="ghost" title="3D·测试版">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M16 3.5 L28 10 V22 L16 28.5 L4 22 V10 Z"/><path d="M4 10 L16 16.5 L28 10"/><path d="M16 16.5 V28.5"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".85"><path d="M10 6.8 L22 13.2"/><path d="M22 13.2 V25"/></g></svg
+            ><span class="btn-label">3D</span>
+          </button>
+          <button id="btn-sound" class="ghost" title="音效">
+            <svg class="hd-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M6 12.5 H10.5 L16.5 7 V25 L10.5 19.5 H6 Z"/><path d="M21 12 A5.5 5.5 0 0 1 21 20"/><path d="M25 8.5 A10 10 0 0 1 25 23.5"/></g></svg
+            ><span class="btn-label">音效</span>
+          </button>
         </div>
       </header>
       <main id="game-wrap">
-        <div id="hint">👆 按住画布，落下你的第一粒沙</div>
-        <div id="paused-chip" hidden>⏸ 已暂停（仍可布置场景）</div>
+        <div id="hint">
+          <svg class="hint-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M13 27 V13.5 A2 2 0 0 1 17 13.5 V11.5 A2 2 0 0 1 21 11.5 V14"/><path d="M21 14 A2 2 0 0 1 24 16.5 V19 A6.5 6.5 0 0 1 17.5 27"/><path d="M11 20.5 H13"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".85"><path d="M17 18 H20.6"/><path d="M17 22 H20.6"/></g></svg
+          ><span>按住画布，落下你的第一粒沙</span>
+        </div>
+        <div id="paused-chip" hidden>
+          <svg class="chip-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"><path d="M11.6 6.5 V25.5"/><path d="M20.4 6.5 V25.5"/></g></svg
+          ><span>已暂停（仍可布置场景）</span>
+        </div>
       </main>
       <footer id="toolbar">
         <div id="elem-row"></div>
         <div id="tool-row">
           <div class="brush">
             <span class="lbl">笔刷</span>
-            <button id="brush-minus">−</button>
+            <button id="brush-minus" title="缩小笔刷">
+              <svg class="tool-ico sm" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M22 4 L14.4 11.6"/><path d="M15.8 10.2 L11.6 14.4"/><path d="M14.6 11.4 L19.4 16.2"/><path d="M11.6 14.4 L6.6 19.4 L5 25 L10.6 23.4 L15.6 18.4 Z"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"><path d="M4 27 H12"/></g></svg>
+            </button>
             <span id="brush-dot"></span>
-            <button id="brush-plus">＋</button>
+            <button id="brush-plus" title="放大笔刷">
+              <svg class="tool-ico sm" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M22 4 L14.4 11.6"/><path d="M15.8 10.2 L11.6 14.4"/><path d="M14.6 11.4 L19.4 16.2"/><path d="M11.6 14.4 L6.6 19.4 L5 25 L10.6 23.4 L15.6 18.4 Z"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2"><path d="M4 27 H12 M8 23 V31"/></g></svg>
+            </button>
           </div>
           <span class="sep"></span>
-          <button id="btn-pause" class="tool" title="暂停/继续">⏸</button>
-          <button id="btn-clear" class="tool" title="清空画布">🧹</button>
-          <button id="btn-export" class="tool" title="导出 PNG">📷</button>
-          <button id="btn-restore" class="tool" title="一键恢复当前地图">🔄</button>
-          <button id="btn-snapshot" class="tool" title="导出场景 JSON（3D 查看器用）">📦</button>
-          <button id="btn-share" class="tool" title="分享 / 导入世界码">🔗</button>
+          <button id="btn-pause" class="tool" title="暂停/继续">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6"><path d="M11.6 6.5 V25.5"/><path d="M20.4 6.5 V25.5"/></g></svg>
+          </button>
+          <button id="btn-clear" class="tool" title="清空画布">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M16 3.5 V10.5"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M10.5 10.5 H21.5"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M11.5 13.5 H20.5 L23 28 H9 Z"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".85"><path d="M13.4 17 V27.6"/><path d="M15.7 17 V27.6"/><path d="M18 17 V27.6"/></g></svg>
+          </button>
+          <button id="btn-export" class="tool" title="导出 PNG">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M3.5 12 H9.5 L11.5 8.5 H20.5 L22.5 12 H28.5 V25 H3.5 Z"/><circle cx="16" cy="18.6" r="4.8"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M13.2 18.6 A2.8 2.8 0 0 1 18.8 18.6"/></g><circle cx="6.4" cy="15" r="1.1" fill="currentColor"/></svg>
+          </button>
+          <button id="btn-restore" class="tool" title="一键恢复当前地图">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M25.8 16 A10 10 0 1 1 21.3 7.3"/><path d="M21.3 3.2 V7.6 H25.7"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M16 8.4 V12"/></g></svg>
+          </button>
+          <button id="btn-snapshot" class="tool" title="导出场景 JSON（3D 查看器用）">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M4 11 L16 6 L28 11 V27 H4 Z"/><path d="M4 11 L16 16 L28 11"/><path d="M16 16 V27"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".9"><path d="M16 6 V16"/><path d="M10 8.5 L22 13.5"/></g></svg>
+          </button>
+          <button id="btn-share" class="tool" title="分享 / 导入世界码">
+            <svg class="tool-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M13.2 18.8 A5 5 0 0 0 20.3 18.8 L25.4 13.7 A5 5 0 0 0 18.3 6.6 L15.6 9.3"/><path d="M18.8 13.2 A5 5 0 0 0 11.7 13.2 L6.6 18.3 A5 5 0 0 0 13.7 25.4 L16.4 22.7"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M14.4 15.6 L17.6 18.8"/></g></svg>
+          </button>
         </div>
       </footer>
     </div>
@@ -76,7 +116,9 @@
       <div id="map-card">
         <div class="modal-head">
           <b>选择初始地图</b>
-          <button id="map-close">✕</button>
+          <button id="map-close" title="关闭">
+            <svg class="x-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M9.5 9.5 L22.5 22.5"/><path d="M22.5 9.5 L9.5 22.5"/></g></svg>
+          </button>
         </div>
         <div id="map-grid"></div>
         <p class="modal-tip">选择后立即生成新世界，替换当前地形</p>
@@ -86,7 +128,9 @@
       <div id="ach-card">
         <div class="modal-head">
           <b>成就</b>
-          <button id="ach-close">✕</button>
+          <button id="ach-close" title="关闭">
+            <svg class="x-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M9.5 9.5 L22.5 22.5"/><path d="M22.5 9.5 L9.5 22.5"/></g></svg>
+          </button>
         </div>
         <div id="ach-list"></div>
       </div>
@@ -95,7 +139,9 @@
       <div id="modal-card">
         <div class="modal-head">
           <b>发现图鉴</b>
-          <button id="modal-close">✕</button>
+          <button id="modal-close" title="关闭">
+            <svg class="x-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M9.5 9.5 L22.5 22.5"/><path d="M22.5 9.5 L9.5 22.5"/></g></svg>
+          </button>
         </div>
         <div id="modal-grid"></div>
         <p class="modal-tip">在沙盒里触发新的元素反应，就能点亮图鉴</p>
@@ -105,17 +151,25 @@
       <div id="share-card">
         <div class="modal-head">
           <b>分享 / 导入世界</b>
-          <button id="share-close">✕</button>
+          <button id="share-close" title="关闭">
+            <svg class="x-ico" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M9.5 9.5 L22.5 22.5"/><path d="M22.5 9.5 L9.5 22.5"/></g></svg>
+          </button>
         </div>
         <div class="share-sec">
           <div class="share-lbl">当前世界的分享码</div>
           <textarea id="share-out" readonly spellcheck="false"></textarea>
-          <button id="share-copy" class="share-btn">📋 复制分享码</button>
+          <button id="share-copy" class="share-btn">
+            <svg class="tool-ico sm" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect x="6" y="4" width="20" height="24" rx="2.5"/><path d="M11 4 V2.5 h10 V4"/><path d="M12 11 H20"/><path d="M12 15.5 H20"/><path d="M12 20 H16.5"/></g></svg
+            ><span>复制分享码</span>
+          </button>
         </div>
         <div class="share-sec">
           <div class="share-lbl">导入：粘贴别人的分享码</div>
           <textarea id="share-in" placeholder="粘贴分享码…" spellcheck="false"></textarea>
-          <button id="share-import" class="share-btn">📥 导入到当前画布</button>
+          <button id="share-import" class="share-btn">
+            <svg class="tool-ico sm" viewBox="0 0 32 32" fill="none" aria-hidden="true"><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M16 4 V19"/><path d="M10 13 L16 19 L22 13"/><path d="M5 24 H27"/></g><g stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" opacity=".85"><path d="M5 28 H27"/></g></svg
+            ><span>导入到当前画布</span>
+          </button>
         </div>
         <p class="modal-tip">分享码即整个画面；屏幕尺寸不同会自动适配（水平居中、地形沉底）</p>
       </div>

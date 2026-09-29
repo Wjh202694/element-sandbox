@@ -59,6 +59,25 @@ header {
   padding: 6px 14px;
   font-size: 13px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1;
+}
+
+/* 顶栏 / 工具栏线稿图标：尺寸由 class 定，颜色跟随 currentColor */
+.hd-ico {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .hd-ico {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .ghost b {
@@ -131,6 +150,18 @@ header {
   cursor: pointer;
   backdrop-filter: blur(3px);
   transition: border-color 0.15s, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1;
+}
+
+.td-ico {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 4px;
 }
 
 .td3d-toggle:hover {
@@ -208,6 +239,10 @@ header {
   border-radius: 999px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1;
 }
 
 .share-btn:hover {
@@ -274,8 +309,11 @@ header {
   background: rgba(255, 214, 110, 0.07);
 }
 
-.map-icon {
-  font-size: 26px;
+.map-icon,
+.map-ico {
+  width: 30px;
+  height: 30px;
+  display: block;
 }
 
 .map-name {
@@ -347,8 +385,12 @@ header {
   box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.4);
 }
 
-.bg-icon {
-  font-size: 15px;
+.bg-icon,
+.bg-ico {
+  width: 22px;
+  height: 16px;
+  display: block;
+  border-radius: 3px;
 }
 
 /* ===== 画布区 ===== */
@@ -383,6 +425,16 @@ header {
   pointer-events: none;
   white-space: nowrap;
   animation: breathe 2.4s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint-ico {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #ffe9a8;
 }
 
 @keyframes breathe {
@@ -406,6 +458,16 @@ header {
   border-radius: 999px;
   font-size: 12px;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.chip-ico {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
 }
 
 /* ===== 工具栏 ===== */
@@ -482,8 +544,11 @@ header {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: #dfe4ec;
-  font-size: 16px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 #brush-dot {
@@ -508,9 +573,37 @@ header {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.05);
   color: #dfe4ec;
-  font-size: 17px;
   cursor: pointer;
   touch-action: manipulation;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+/* 元素栏 / 工具栏 / 弹窗里的内联 SVG 图标尺寸 */
+.elem-ico {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+.tool-ico {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.tool-ico.sm {
+  width: 15px;
+  height: 15px;
+}
+
+.x-ico {
+  width: 15px;
+  height: 15px;
+  display: block;
 }
 
 .tool:active,
@@ -535,6 +628,16 @@ header {
   pointer-events: none;
   z-index: 60;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.toast-ico {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 #toast.show {
@@ -595,8 +698,12 @@ header {
   --tier-color: #c792ea;
 }
 
-.ach-icon {
-  font-size: 30px;
+.ach-icon,
+.ach-ico {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 .ach-t1 {
@@ -698,8 +805,12 @@ header {
   background: color-mix(in srgb, var(--tier-color) 7%, transparent);
 }
 
-.ach-item-icon {
-  font-size: 24px;
+.ach-item-icon,
+.ach-item-ico {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: block;
 }
 
 .ach-item-name {
@@ -752,13 +863,27 @@ header {
   font-size: 16px;
 }
 
-#modal-close {
+#modal-close,
+#map-close,
+#ach-close,
+#share-close {
   background: none;
   border: none;
   color: #9aa3b2;
-  font-size: 16px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+#modal-close:hover,
+#map-close:hover,
+#ach-close:hover,
+#share-close:hover {
+  color: #e6ecf6;
+  background: rgba(255, 255, 255, 0.07);
 }
 
 #modal-grid {
@@ -784,9 +909,12 @@ header {
   background: rgba(255, 214, 110, 0.06);
 }
 
-.disc-icon {
-  font-size: 26px;
-  margin-bottom: 6px;
+.disc-icon,
+.disc-ico {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 6px;
+  display: block;
 }
 
 .disc-name {

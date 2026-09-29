@@ -1,5 +1,6 @@
 import { MAPS } from '../sim/maps.js';
 import { getMapId, saveMapId } from '../utils/storage.js';
+import { biomeIcon } from '../icons/index.js';
 
 export function initMapPicker() {
   const modal = document.getElementById('map-modal');
@@ -26,7 +27,7 @@ function renderMaps(grid) {
   const cur = getMapId();
   grid.innerHTML = MAPS.map(
     (m) => `<button class="map-item ${m.id === cur ? 'cur' : ''}" data-id="${m.id}">
-      <span class="map-icon">${m.icon}</span>
+      <span class="map-icon">${biomeIcon(m.icon, 'map-ico')}</span>
       <span class="map-name">${m.name}</span>
       <span class="map-desc">${m.desc}</span>
     </button>`

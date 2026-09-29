@@ -137,7 +137,7 @@ export function create3DScene(world, host, renderer2d) {
   }
 
   // ===== 组装实例（含树木）=====
-  const items = []; // {x, z, y0, h, sx, sz, rgb, glow}
+  let items = []; // {x, z, y0, h, sx, sz, rgb, glow}；海岛模式会整体换成群岛实例
   for (const [key, col] of cols) {
     const i = Math.floor(key / 1000);
     const j = key % 1000;
@@ -231,6 +231,8 @@ export function create3DScene(world, host, renderer2d) {
 
   let maxH = 1;
   for (const it of items) maxH = Math.max(maxH, it.y0 + it.h);
+  const islandItems = items; // 火山岛实例集合，切走后由此恢复
+  const islandMaxH = maxH;
 
   const camera = new THREE.PerspectiveCamera(45, host.clientWidth / host.clientHeight, 1, S * 8);
   camera.position.set(0, PEAK * 2.8 + S * 0.3, S * 0.62);
@@ -619,6 +621,208 @@ export function create3DScene(world, host, renderer2d) {
     }
     live = null;
     liveBase.visible = false;
+    enterIsland();
+  }
+
+  function tickLive() {
+    // 建成后 uProgress 继续前进，新格子永远有坠落入场可用
+    buildUniform.value = liveProgress();
+  }
+
+  // ===== 海岛模式：程序化群岛（借鉴火山岛生成器，与 2D 解耦的观赏对象）=====
+  // 半透明海面 + 五座沙岛 + 海底礁石藻类 + 棕榈树；海啸与雷暴按 2D 天气节奏在 3D 里动起来。
+  const SEA_H = 4; // 海平面高度（格）
+  let seaPlane = null;
+  let seaTsunami = null; // { mesh, t0, side, dur }
+  let seaBolts = []; // { mesh, light, t0 }
+  let boltMat = null;
+  let seaSurface = null; // 每列地表高度，闪电劈落点用
+  let nextTsunami = 0;
+  let nextStorm = 0;
+  let stormUntil = 0;
+  let lastBolt = 0;
+  let tsunamiCount = 0;
+
+  // 棕榈：两段外弯细干 + 十字扇形叶冠
+  function addPalm(arr, x, z, g) {
+    const lean = rand() < 0.5 ? 1 : -1;
+    const th = 6 + ((rand() * 3) | 0);
+    const lower = Math.ceil(th * 0.6);
+    arr.push({ x, z, y0: g, h: lower, sx: 0.5, sz: 0.5, rgb: C_WOOD, glow: false, palm: true });
+    arr.push({ x: x + lean, z, y0: g + lower - 1, h: th - lower + 1, sx: 0.5, sz: 0.5, rgb: C_WOOD, glow: false });
+    const tx = x + lean;
+    const ty = g + th;
+    arr.push({ x: tx, z, y0: ty, h: 0.6, sx: 2.6, sz: 0.9, rgb: C_PLANT, glow: false });
+    arr.push({ x: tx, z, y0: ty, h: 0.6, sx: 0.9, sz: 2.6, rgb: C_PLANT, glow: false });
+    arr.push({ x: tx + lean, z, y0: ty + 0.9, h: 0.5, sx: 1.3, sz: 0.7, rgb: C_PLANT, glow: false });
+  }
+
+  function buildSeaItems() {
+    const arr = [];
+    const cols = new Map(); // key → { h, cap }
+    const key = (i, j) => i * 1000 + j;
+    // 全幅海床：浅起伏石床
+    for (let i = 0; i < S; i++) {
+      for (let j = 0; j < S; j++) {
+        const h = Math.max(1, Math.round((Math.sin(i * 0.09) + Math.sin(j * 0.12 + 1)) * 0.75 + 1.6));
+        cols.set(key(i, j), { h, cap: C_STONE });
+      }
+    }
+    // 五座沙岛：x 沿用 2D 群岛点位比例，纵向固定错开（2D 比例直接换算成圆会互相重叠）
+    const islands = [
+      [0.2, 0.16, 0.28],
+      [0.5, 0.22, 0.5],
+      [0.8, 0.14, 0.66],
+      [0.36, 0.06, 0.74],
+      [0.66, 0.05, 0.3],
+    ];
+    const tops = [];
+    for (const [fx, fr, fz] of islands) {
+      const cx = Math.round(S * fx);
+      const cz = Math.round(S * fz);
+      const R2 = Math.max(3, Math.round(S * fr * 0.85));
+      for (let dx = -R2; dx <= R2; dx++) {
+        for (let dz = -R2; dz <= R2; dz++) {
+          const d2 = (dx / R2) ** 2 + (dz / R2) ** 2;
+          if (d2 > 1) continue;
+          const i = cx + dx;
+          const j = cz + dz;
+          if (i < 0 || i >= S || j < 0 || j >= S) continue;
+          const mound = Math.round(7 * (1 - d2));
+          const h = SEA_H + 1 + mound;
+          const cap = mound >= 4 ? C_PLANT : C_SAND; // 高处草皮
+          cols.set(key(i, j), { h, cap });
+          if (mound >= 4) tops.push({ i, j, g: h });
+        }
+      }
+    }
+    // 水下礁石群
+    for (const [fx, fz] of [
+      [0.33, 0.55],
+      [0.62, 0.62],
+      [0.9, 0.5],
+    ]) {
+      const rx = Math.round(S * fx);
+      const rz = Math.round(S * fz);
+      for (let dx = -4; dx <= 4; dx++) {
+        for (let dz = -3; dz <= 3; dz++) {
+          if ((dx / 4) ** 2 + (dz / 3) ** 2 > 1) continue;
+          const c = cols.get(key(rx + dx, rz + dz));
+          if (c && c.h <= SEA_H) cols.set(key(rx + dx, rz + dz), { h: c.h + 2, cap: C_STONE });
+        }
+      }
+    }
+    // 海底藻斑：石床表层随机改藻色
+    for (let n = 0; n < 110; n++) {
+      const c = cols.get(key((rand() * S) | 0, (rand() * S) | 0));
+      if (c && c.h <= SEA_H) c.cap = C_PLANT;
+    }
+    for (const [k, c] of cols) {
+      const i = Math.floor(k / 1000);
+      const j = k % 1000;
+      if (c.h > SEA_H) {
+        // 出水岛体：石基 + 沙身 + 顶盖三层
+        arr.push({ x: i, z: j, y0: 0, h: 2, sx: 1, sz: 1, rgb: C_STONE, glow: false });
+        if (c.h > 3) arr.push({ x: i, z: j, y0: 2, h: c.h - 3, sx: 1, sz: 1, rgb: C_SAND, glow: false });
+        arr.push({ x: i, z: j, y0: c.h - 1, h: 1, sx: 1, sz: 1, rgb: c.cap, glow: false });
+      } else {
+        arr.push({ x: i, z: j, y0: 0, h: c.h, sx: 1, sz: 1, rgb: c.cap, glow: false });
+      }
+    }
+    // 棕榈树：岛顶错落散布
+    const planted = [];
+    for (const t of tops) {
+      if (planted.length >= 12) break;
+      if (planted.some((p) => Math.abs(p.i - t.i) < 5 && Math.abs(p.j - t.j) < 5)) continue;
+      if (rand() < 0.4) continue;
+      addPalm(arr, t.i, t.j, t.g);
+      planted.push(t);
+    }
+    // 地表高度图：闪电劈落点
+    seaSurface = new Int16Array(S * S).fill(SEA_H);
+    for (const [k, c] of cols) {
+      if (c.h > SEA_H) seaSurface[(Math.floor(k / 1000)) * S + (k % 1000)] = c.h;
+    }
+    return arr;
+  }
+
+  function disposeTerrainMeshes() {
+    if (solidMesh) {
+      scene.remove(solidMesh);
+      solidMesh.dispose();
+      solidMesh = null;
+    }
+    if (glowMesh) {
+      scene.remove(glowMesh);
+      glowMesh.dispose();
+      glowMesh = null;
+    }
+  }
+
+  function disposeSea() {
+    if (seaPlane) {
+      scene.remove(seaPlane);
+      seaPlane.geometry.dispose();
+      seaPlane.material.dispose();
+      seaPlane = null;
+    }
+    if (seaTsunami) {
+      scene.remove(seaTsunami.mesh);
+      seaTsunami.mesh.geometry.dispose();
+      seaTsunami.mesh.material.dispose();
+      seaTsunami = null;
+    }
+    for (const b of seaBolts) {
+      scene.remove(b.mesh);
+      b.mesh.geometry.dispose();
+      scene.remove(b.light);
+    }
+    seaBolts = [];
+    if (boltMat) {
+      boltMat.dispose();
+      boltMat = null;
+    }
+    seaSurface = null;
+  }
+
+  function seaStart() {
+    mode = 'sea';
+    disposeTerrainMeshes();
+    liveBase.visible = false;
+    items = buildSeaItems();
+    maxH = 1;
+    for (const it of items) maxH = Math.max(maxH, it.y0 + it.h);
+    building = true; // 重播自搭建入场：海床先、岛体次、棕榈收尾
+    buildStart = performance.now();
+    rebuild(true);
+    // 半透明海面：随搭建展开，日常微起伏
+    seaPlane = new THREE.Mesh(
+      new THREE.BoxGeometry(S * 1.3, 1.6, S * 1.3),
+      new THREE.MeshLambertMaterial({ color: 0x2f6fbd, transparent: true, opacity: 0.72 })
+    );
+    seaPlane.position.y = SEA_H - 0.8;
+    seaPlane.scale.setScalar(0.001);
+    scene.add(seaPlane);
+    boltMat = new THREE.MeshBasicMaterial({ color: 0xffe95e, transparent: true, opacity: 0.95 });
+    nextTsunami = performance.now() + 9000; // 首场海啸 9 秒后，之后 60 秒一轮
+    nextStorm = performance.now() + 15000; // 首轮雷暴 15 秒后，之后 25 秒一轮
+    stormUntil = 0;
+    lastBolt = 0;
+    tsunamiCount = 0;
+    // 相机 / 雾：海岛低机位广视野
+    camera.position.set(0, SEA_H + S * 0.22, S * 0.85);
+    controls.target.set(0, SEA_H * 0.6, 0);
+    controls.minDistance = 30;
+    controls.maxDistance = S * 2.6;
+    scene.fog.near = S * 1.2;
+    scene.fog.far = S * 3.2;
+    toggleBtn.textContent = '🖼 实景同步';
+  }
+
+  function enterIsland() {
+    mode = 'island';
+    items = islandItems;
+    maxH = islandMaxH;
     disc.visible = true;
     building = true; // 重播火山岛自搭建入场
     buildStart = performance.now();
@@ -629,12 +833,81 @@ export function create3DScene(world, host, renderer2d) {
     controls.maxDistance = S * 2.4;
     scene.fog.near = S * 0.9;
     scene.fog.far = S * 2.6;
-    toggleBtn.textContent = '🖼 实景同步';
+    toggleBtn.textContent = '🌊 海岛';
   }
 
-  function tickLive() {
-    // 建成后 uProgress 继续前进，新格子永远有坠落入场可用
-    buildUniform.value = liveProgress();
+  function tickSea() {
+    tickBuild(); // 搭建进度 + 底座撑开
+    if (!seaPlane) return;
+    const now = performance.now();
+    const grow = Math.min(1, buildUniform.value * 2.5 + 0.001);
+    seaPlane.scale.set(grow, 1, grow);
+    seaPlane.position.y = SEA_H - 0.8 + Math.sin(now * 0.0011) * 0.16; // 潮汐微起伏
+    // 海啸：60 秒一轮左右交替——水墙立起 → 横扫海面 → 消散
+    if (!seaTsunami && now >= nextTsunami) {
+      const side = tsunamiCount % 2;
+      const wallH = SEA_H + 7;
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(3, wallH, S * 1.1),
+        new THREE.MeshLambertMaterial({ color: 0x3f7fd9, transparent: true, opacity: 0.85 })
+      );
+      mesh.position.set(side === 0 ? -S * 0.62 : S * 0.62, wallH / 2 - 1, 0);
+      mesh.scale.y = 0.05;
+      scene.add(mesh);
+      seaTsunami = { mesh, t0: now, side, dur: 4600 };
+      tsunamiCount++;
+      nextTsunami = now + 60000;
+    }
+    if (seaTsunami) {
+      const p = (now - seaTsunami.t0) / seaTsunami.dur;
+      if (p >= 1) {
+        scene.remove(seaTsunami.mesh);
+        seaTsunami.mesh.geometry.dispose();
+        seaTsunami.mesh.material.dispose();
+        seaTsunami = null;
+      } else {
+        const m = seaTsunami.mesh;
+        m.scale.y = Math.min(1, p / 0.22) * (1 - Math.max(0, (p - 0.78) / 0.22) * 0.55);
+        const sweep = Math.max(0, (p - 0.18) / 0.74);
+        const x0 = seaTsunami.side === 0 ? -S * 0.62 : S * 0.62;
+        m.position.x = x0 * (1 - sweep) - x0 * sweep;
+        m.material.opacity = 0.85 * (1 - Math.max(0, (p - 0.8) / 0.2));
+      }
+    }
+    // 雷暴：25 秒一轮窗口 5 秒，天顶劈电火花柱 + 点光闪烁
+    if (now >= nextStorm) {
+      stormUntil = now + 5000;
+      nextStorm = now + 25000;
+    }
+    if (now < stormUntil && now - lastBolt > 830 && seaBolts.length < 3) {
+      lastBolt = now;
+      const bx = (rand() - 0.5) * S * 1.05;
+      const bz = (rand() - 0.5) * S * 1.05;
+      const gi = Math.max(0, Math.min(S - 1, Math.round(bx + R)));
+      const gj = Math.max(0, Math.min(S - 1, Math.round(bz + R)));
+      const botY = seaSurface[gi * S + gj];
+      const topY = maxH + 14;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, topY - botY, 0.7), boltMat);
+      mesh.position.set(bx, (topY + botY) / 2, bz);
+      scene.add(mesh);
+      const light = new THREE.PointLight(0xffe95e, 0, S * 0.5);
+      light.position.set(bx, botY + 3, bz);
+      scene.add(light);
+      seaBolts.push({ mesh, light, t0: now });
+    }
+    for (let n = seaBolts.length - 1; n >= 0; n--) {
+      const b = seaBolts[n];
+      const age = now - b.t0;
+      if (age > 900) {
+        scene.remove(b.mesh);
+        b.mesh.geometry.dispose();
+        scene.remove(b.light);
+        seaBolts.splice(n, 1);
+        continue;
+      }
+      b.mesh.visible = Math.sin(age * 0.045) > -0.4; // 频闪
+      b.light.intensity = Math.max(0, 3 * (1 - age / 900));
+    }
   }
 
   function resize() {
@@ -661,6 +934,7 @@ export function create3DScene(world, host, renderer2d) {
   (function loop() {
     raf = requestAnimationFrame(loop);
     if (mode === 'live') tickLive();
+    else if (mode === 'sea') tickSea();
     else tickBuild();
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
@@ -673,18 +947,25 @@ export function create3DScene(world, host, renderer2d) {
   const overlay = document.createElement('div');
   overlay.className = 'td-overlay';
   overlay.appendChild(renderer.domElement);
-  // 观赏对象切换：程序化火山岛 ↔ 2D 世界实景沙盘
+  // 观赏对象三态循环：程序化火山岛 ↔ 程序化海岛 ↔ 2D 世界实景沙盘
   toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'td3d-toggle';
-  toggleBtn.textContent = '🖼 实景同步';
-  toggleBtn.title = '在程序化火山岛与 2D 世界实景沙盘之间切换（实景实时同步喷发与流动）';
-  toggleBtn.onclick = () => (mode === 'island' ? liveStart() : exitLive());
+  toggleBtn.textContent = '🌊 海岛';
+  toggleBtn.title = '切换观赏对象：火山岛 → 海岛 → 实景同步（海岛与实景实时同步喷发与流动）';
+  toggleBtn.onclick = () => {
+    if (mode === 'island') seaStart();
+    else if (mode === 'sea') {
+      disposeSea();
+      liveStart();
+    } else enterIsland();
+  };
   overlay.appendChild(toggleBtn);
   host.appendChild(overlay);
   // 调试钩子：后台标签 rAF 被节流时可手动渲染一帧（同时推进搭建动画）
   overlay.__renderOnce = () => {
     if (mode === 'live') tickLive();
+    else if (mode === 'sea') tickSea();
     else tickBuild();
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
@@ -709,6 +990,10 @@ export function create3DScene(world, host, renderer2d) {
           capGlow: live.cap.glow,
         }
       : null,
+    sea:
+      mode === 'sea'
+        ? { tsunami: !!seaTsunami, bolts: seaBolts.length, items: items.length }
+        : null,
   });
 
   return function dispose() {
@@ -717,6 +1002,7 @@ export function create3DScene(world, host, renderer2d) {
     window.removeEventListener('resize', resize);
     controls.dispose();
     toggleBtn.remove();
+    if (mode === 'sea') disposeSea();
     if (live) {
       for (const kind of ['solid', 'glow']) {
         const mesh = live.meshes[kind];

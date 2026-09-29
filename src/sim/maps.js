@@ -98,8 +98,20 @@ function giantTree(w, gx, surf, cfg) {
 
 // ===== 五张初始地图（按世界比例生成，横竖屏通用）=====
 
-// 群岛：海面沙岛群 + 礁石珊瑚 + 每分钟交替海啸
+// 群岛：海面沙岛群 + 礁石珊瑚 + 每分钟交替海啸 + 周期雷暴
 const TSUNAMI_CYCLE = 3600; // 约 60 秒一次，左右岸交替
+const STORM_CYCLE = 1500; // 约 25 秒一轮雷暴
+const STORM_WINDOW = 300; // 雷暴窗口 5 秒，窗内每 50 帧一道雷
+
+// 闪电：纵列电火花从天顶落到该列首个非空格，只写空格不覆盖地形。
+// 落海触发波前导电、落沙滩烧出闪玻璃、落树焦枯起火——全部复用电元素既有反应。
+function lightningBolt(w, x) {
+  for (let y = 0; y < w.h; y++) {
+    const i = y * w.w + x;
+    if (w.cells[i] !== E.EMPTY) break;
+    w.set(i, E.ELECTRIC, w.spawnLife(E.ELECTRIC));
+  }
+}
 
 function archipelagoGen(w) {
   const { w: W, h: H } = w;
@@ -157,8 +169,14 @@ function archipelagoGen(w) {
   tree(w, Math.round(W * 0.8), sea - 3, 4, 2);
 }
 
-// 海啸：周期性在岸侧竖起水墙，塌落成巨浪横扫群岛
+// 海啸：周期性在岸侧竖起水墙，塌落成巨浪横扫群岛；雷暴窗口随机落雷
 function archipelagoTick(w, frame) {
+  if (frame % STORM_CYCLE < STORM_WINDOW && frame % 50 === 0) {
+    lightningBolt(w, (Math.random() * w.w) | 0);
+    if (frame % STORM_CYCLE === 0 && typeof document !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: '⚡ 雷暴来袭！' }));
+    }
+  }
   if (frame < 2400) return;
   if (frame % TSUNAMI_CYCLE !== 0) return;
   const side = ((frame / TSUNAMI_CYCLE) | 0) % 2;
@@ -494,7 +512,7 @@ function cityGen(w) {
 export const MAPS = [
   { id: 'blank', name: '空白画布', icon: '⬜', desc: '一张白纸，随心创作', gen: blank },
   { id: 'forest', name: '青山林', icon: '🌲', desc: '密林环绕一株参天大树', gen: forest },
-  { id: 'archipelago', name: '群岛', icon: '🏝️', desc: '沙岛礁石珊瑚，每分钟交替海啸', gen: archipelagoGen, tick: archipelagoTick },
+  { id: 'archipelago', name: '群岛', icon: '🏝️', desc: '沙岛礁石珊瑚，每分钟交替海啸，偶有雷暴', gen: archipelagoGen, tick: archipelagoTick },
   { id: 'volcano', name: '火山', icon: '🌋', desc: '岩浆纹路布满山体，周期喷发', gen: volcanoGen, tick: volcanoTick },
   { id: 'canyon', name: '峡谷', icon: '🏔️', desc: '峭壁之间一条河', gen: canyon },
   { id: 'desert', name: '沙漠', icon: '🏜️', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },

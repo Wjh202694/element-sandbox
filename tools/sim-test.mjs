@@ -492,6 +492,22 @@ function count(world, id) {
   check('通电水 × 火药 → 触发 boom 发现', disc.includes('boom'));
 }
 
+// 31. 群岛雷暴：tick 至雷暴窗口落雷，窗口结束后火花归零
+{
+  const { MAPS, generateMap } = await import('../src/sim/maps.js');
+  const w2 = makeWorld();
+  generateMap(w2, 'archipelago');
+  const tick = MAPS.find((m) => m.id === 'archipelago').tick;
+  w2.frame = 1500; // 首轮雷暴窗口起点
+  for (let s = 0; s < 60; s++) {
+    w2.step();
+    tick(w2, w2.frame);
+  }
+  check(`雷暴落雷（60 帧内电火花 ${count(w2, E.ELECTRIC)} 格）`, count(w2, E.ELECTRIC) > 0);
+  for (let s = 0; s < 600; s++) w2.step(); // 窗口外不再 tick，电火花应全部消散
+  check(`雷火花消散（剩 ${count(w2, E.ELECTRIC)}）`, count(w2, E.ELECTRIC) === 0);
+}
+
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒
 {
   const w = makeWorld();

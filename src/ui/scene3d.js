@@ -417,7 +417,7 @@ export function create3DScene(world, host, renderer2d) {
     if (id === E.EMPTY) continue;
     livePalette.set(id, hexRgb(EL[key].swatch || '#999999'));
   }
-  const isGlowId = (id) => id === E.FIRE || id === E.LAVA;
+  const isGlowId = (id) => id === E.FIRE || id === E.LAVA || id === E.ELECTRIC;
 
   const liveBase = new THREE.Mesh(
     new THREE.BoxGeometry(W + 6, 3, LIVE_DEPTH + 6),

@@ -97,13 +97,13 @@ function count(world, id) {
   const w2 = new World(W, H, (k) => disc.push(k));
   w2.paint(30, 40, 5, E.WATER);
   w2.paint(30, 30, 4, E.OIL);
-  for (let s = 0; s < 90; s++) w2.step();
+  for (let s = 0; s < 150; s++) w2.step(); // 充分沉降，避免持续翻滚期的水压油瞬态
   check('油×水 → 触发 float 发现', disc.includes('float'));
   // 浮力不变量：水比油重，水永不压在油上（水在油上一步内必然下沉交换）。
   // 注：不能断言「最高油格严格高于最高水格」——水面静止时堆成中央鼓起的丘，
   // 油沿丘面摊到两翼，翼上的油与丘顶的水天然同一行。
   let waterOnOil = 0;
-  for (let s = 0; s < 5; s++) {
+  for (let s = 0; s < 15; s++) {
     w2.step();
     waterOnOil = 0;
     for (let i = 0; i + W < w2.cells.length; i++) {
@@ -214,13 +214,17 @@ function count(world, id) {
   check(`盐逐渐消散（${saltBefore} → ${count(w2, E.SALT)}）`, count(w2, E.SALT) < saltBefore);
 }
 
-// 14. 酸×石 → 腐蚀
+// 14. 酸×石 → 腐蚀（石碗锁酸：圆顶裸露台上酸液会流走，接触时间不够）
 {
   const disc = [];
   const w2 = new World(W, H, (k) => disc.push(k));
-  w2.paint(30, 36, 4, E.STONE);
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE); // 碗底
+  for (let y = 31; y <= 34; y++) {
+    w2.set(y * W + 24, E.STONE);
+    w2.set(y * W + 36, E.STONE);
+  } // 碗壁
   const stoneBefore = count(w2, E.STONE);
-  w2.paint(30, 31, 2, E.ACID);
+  w2.paint(30, 33, 2, E.ACID); // 酸困在碗里，与碗底持续接触
   for (let s = 0; s < 150; s++) w2.step();
   check('酸×石 → 触发 corrode 发现', disc.includes('corrode'));
   check(`石头被腐蚀（${stoneBefore} → ${count(w2, E.STONE)}）`, count(w2, E.STONE) < stoneBefore);
@@ -400,6 +404,92 @@ function count(world, id) {
   const bad = decodeShareCode('garbage-input');
   const empty = decodeShareCode('');
   check('分享码防伪（乱码与空串均拒绝）', bad === null && empty === null);
+}
+
+// 27. 电：×水导电传播，寿命尽消散、水回归
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE); // 池底
+  for (let y = 31; y <= 34; y++) {
+    w2.set(y * W + 27, E.STONE);
+    w2.set(y * W + 33, E.STONE);
+  } // 池壁
+  for (let y = 32; y <= 34; y++) {
+    for (let x = 28; x <= 32; x++) w2.set(y * W + x, E.WATER);
+  }
+  w2.paint(30, 33, 1, E.ELECTRIC); // 往水里画电
+  let electrified = 0;
+  for (let s = 0; s < 10; s++) {
+    w2.step();
+    for (let i = 0; i < w2.cells.length; i++) {
+      if (w2.cells[i] === E.WATER && w2.life[i] > 0) electrified++;
+    }
+  }
+  check('电 × 水 → 触发 conduct 发现', disc.includes('conduct'));
+  check(`水体被通电（采样期带电格峰值计 ${electrified}）`, electrified > 0);
+  for (let s = 0; s < 240; s++) w2.step();
+  check(`火花消散、水回归（剩电 ${count(w2, E.ELECTRIC)}）`, count(w2, E.ELECTRIC) === 0 && count(w2, E.WATER) > 0);
+}
+
+// 28. 电 × 沙 → 闪玻璃（雷击熔沙）
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE);
+  for (let y = 32; y <= 34; y++) {
+    for (let x = 28; x <= 32; x++) w2.set(y * W + x, E.SAND);
+  }
+  w2.paint(30, 31, 2, E.ELECTRIC); // 紧贴沙堆上方撒一把电火花
+  for (let s = 0; s < 120; s++) w2.step();
+  check('电 × 沙 → 触发 fulgurite 发现', disc.includes('fulgurite'));
+  check('沙被雷熔成玻璃', count(w2, E.GLASS) > 0);
+}
+
+// 29. 电 × 植物 → 焦枯；电 × 火药 → 殉爆；电 × 雪 → 融水
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE);
+  w2.paint(28, 33, 2, E.PLANT);
+  w2.paint(28, 30, 1, E.ELECTRIC); // 植物冠顶上方
+  for (let s = 0; s < 60; s++) w2.step();
+  check('电 × 植物 → 触发 scorch 发现', disc.includes('scorch'));
+
+  const disc2 = [];
+  const w3 = new World(W, H, (k) => disc2.push(k));
+  for (let x = 24; x <= 36; x++) w3.set(35 * W + x, E.STONE);
+  w3.paint(30, 33, 3, E.GUNPOWDER);
+  w3.paint(30, 30, 1, E.ELECTRIC); // 火药堆上方
+  for (let s = 0; s < 40; s++) w3.step();
+  check('电 × 火药 → 触发 boom 发现', disc2.includes('boom'));
+
+  const disc3 = [];
+  const w4 = new World(W, H, (k) => disc3.push(k));
+  for (let x = 26; x <= 34; x++) w4.set(31 * W + x, E.STONE); // 石台托住雪，防止雪掉走、火花追不上
+  for (let x = 26; x <= 34; x++) w4.set(30 * W + x, E.SNOW);
+  w4.paint(30, 29, 2, E.ELECTRIC); // 雪层正上方，火花悬停即持续接触
+  for (let s = 0; s < 60; s++) w4.step();
+  check('电 × 雪 → 触发 snow_melt 发现', disc3.includes('snow_melt'));
+  check('雪被电融（剩 ' + count(w4, E.SNOW) + '）', count(w4, E.SNOW) < 9);
+}
+
+// 30. 通电水 × 火药 → 水中传导引爆
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE); // 池底兼石台
+  for (let y = 31; y <= 34; y++) {
+    w2.set(y * W + 24, E.STONE);
+    w2.set(y * W + 36, E.STONE);
+  }
+  for (let y = 32; y <= 34; y++) {
+    for (let x = 25; x <= 35; x++) w2.set(y * W + x, E.WATER);
+  }
+  w2.paint(30, 33, 3, E.GUNPOWDER); // 火药沉入池底
+  w2.paint(30, 32, 1, E.ELECTRIC); // 水中央通电
+  for (let s = 0; s < 60; s++) w2.step();
+  check('通电水 × 火药 → 触发 boom 发现', disc.includes('boom'));
 }
 
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒

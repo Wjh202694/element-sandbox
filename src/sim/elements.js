@@ -29,6 +29,7 @@ export const E = {
   ACID: 14,
   SOIL: 15,
   SNOW: 16,
+  ELECTRIC: 17,
 };
 
 // 密度：数值大者穿过数值小者下沉（液体/粉末/气体适用）
@@ -85,6 +86,7 @@ export const PALETTE = [
   E.GUNPOWDER,
   E.SALT,
   E.ACID,
+  E.ELECTRIC,
 ];
 
 export const EL = {
@@ -104,5 +106,6 @@ export const EL = {
   [E.ACID]: { name: '酸', swatch: '#6edc3c' },
   [E.SOIL]: { name: '土', swatch: '#8b5e3c' },
   [E.SNOW]: { name: '雪', swatch: '#eef4fb' },
+  [E.ELECTRIC]: { name: '电', swatch: '#ffe95e' },
   [E.EMPTY]: { name: '擦', swatch: '' },
 };

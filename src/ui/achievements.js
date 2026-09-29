@@ -44,7 +44,7 @@ export const ACHIEVEMENTS = [
   { id: 'smogmaster', icon: '🌫️', tier: 1, name: '烟雾大师', desc: '同时存在 600 格烟与蒸汽', cond: (s) => s.maxGas >= 600 },
   { id: 'gardener_bad', icon: '🥀', tier: 1, name: '园丁噩梦', desc: '枯萎 20 株植物', cond: (s) => (s.rx.wither || 0) >= 20 },
   // ===== 挑战 =====
-  { id: 'naturalist', icon: '📚', tier: 2, name: '博物学家', desc: '集齐全部 14 条发现', cond: () => DISCOVERIES.every((d) => isKnown(d.key)) },
+  { id: 'naturalist', icon: '📚', tier: 2, name: '博物学家', desc: '集齐全部发现', cond: () => DISCOVERIES.every((d) => isKnown(d.key)) },
   { id: 'creator', icon: '🌍', tier: 2, name: '创世神', desc: '同时存在 3000 格世界', cond: (s) => s.maxCells >= 3000 },
   { id: 'inferno', icon: '🔥', tier: 2, name: '燎原之火', desc: '同时存在 150 格火焰', cond: (s) => s.maxFire >= 150 },
   { id: 'smog', icon: '🌫️', tier: 2, name: '浓烟蔽日', desc: '同时存在 400 格烟与蒸汽', cond: (s) => s.maxGas >= 400 },

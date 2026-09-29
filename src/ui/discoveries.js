@@ -26,6 +26,10 @@ export const DISCOVERIES = [
   { key: 'soil_grow', icon: '🪴', name: '栽培', formula: '土 × 植物', desc: '沃土让植物扎根蔓延' },
   { key: 'soil_brick', icon: '🏺', name: '土陶', formula: '熔岩 × 土', desc: '烈火烧土成陶' },
   { key: 'snow_melt', icon: '🫠', name: '融雪', formula: '雪 × 高温/盐', desc: '雪遇热与盐化作春水' },
+  { key: 'conduct', icon: '⚡', name: '导电', formula: '电 × 水', desc: '电弧沿水面炸裂传播' },
+  { key: 'fulgurite', icon: '🌟', name: '闪玻璃', formula: '电 × 沙', desc: '雷霆熔沙，瞬时成琉璃' },
+  { key: 'scorch', icon: '🪫', name: '焦枯', formula: '电 × 植物', desc: '草木经电，焦烟四起' },
+  { key: 'electrolysis', icon: '🫧', name: '电解', formula: '通电水 × 时间', desc: '水体噼啪作响，汽泡升腾' },
 ];
 
 let known = loadDiscovered();

@@ -88,6 +88,7 @@ export class World {
         else if (id === E.GUNPOWDER) this.updatePowder(i, x, y, E.GUNPOWDER, null);
         else if (id === E.SOIL) this.updateSoil(i, x, y);
         else if (id === E.SNOW) this.updateSnow(i, x, y);
+        else if (id === E.ELECTRIC) this.updateElectric(i, x, y);
       }
     }
   }
@@ -120,6 +121,48 @@ export class World {
   }
 
   updateWater(i, x, y) {
+    // 通电状态（借 life 标记，id 仍是水）：新鲜期（life>6）向 8 向传导，
+    // 之后进入静默衰减——否则相邻两格会互相回充，湖面永远噼啪不停
+    if (this.life[i] > 0) {
+      this.life[i]--;
+      if (this.life[i] > 6) {
+        for (let k = 0; k < 8; k++) {
+          const nx = x + DX8[k];
+          const ny = y + DY8[k];
+          if (!this.inBounds(nx, ny)) continue;
+          const j = ny * this.w + nx;
+          const c = this.cells[j];
+          if (c === E.GUNPOWDER) {
+            this.igniteCell(j, c); // 通电水引爆火药
+            continue;
+          }
+          if (c === E.WATER && this.life[j] === 0) {
+            this.discover('conduct');
+            this.set(j, E.WATER, 8 + rand() * 8);
+            continue;
+          }
+          if (c === E.PLANT && rand() < 0.03) {
+            this.discover('scorch');
+            this.set(j, E.SMOKE, 30 + rand() * 30);
+            continue;
+          }
+        }
+        // 电解：偶发冒出电火花（水面噼啪作响的观感来源）
+        if (rand() < 0.02) {
+          this.discover('electrolysis');
+          if (y > 0 && this.cells[i - this.w] === E.EMPTY && rand() < 0.5) {
+            this.set(i - this.w, E.ELECTRIC, 5 + rand() * 8);
+          }
+        }
+      }
+      if (rand() < 0.006) {
+        // 电解汽化：少量水电解成蒸汽逸出
+        this.discover('electrolysis');
+        this.set(i, E.STEAM, 100 + rand() * 60);
+        return;
+      }
+      return; // 通电期间驻留不流动，让波前完整走完
+    }
     // 遇植物：水被吸收，藤蔓生长（速率压低，防海上藻类疯长）
     if (rand() < 0.004) {
       for (let k = 0; k < 8; k++) {
@@ -230,6 +273,57 @@ export class World {
     if (y > 0 && rand() < 0.04) {
       const j = i - this.w;
       if (this.cells[j] === E.EMPTY) this.moveTo(i, j);
+    }
+  }
+
+  // 电：短寿命能量火花。遇水把能量交给整片水体（波前传导），
+  // 遇火药殉爆、雷击熔沙成「闪玻璃」、灼焦植物、融化雪，寿命尽即消散。
+  updateElectric(i, x, y) {
+    if (this.life[i] > 0) this.life[i]--;
+    if (this.life[i] === 0) {
+      this.set(i, E.EMPTY);
+      return;
+    }
+    for (let k = 0; k < 8; k++) {
+      const nx = x + DX8[k];
+      const ny = y + DY8[k];
+      if (!this.inBounds(nx, ny)) continue;
+      const j = ny * this.w + nx;
+      const c = this.cells[j];
+      if (c === E.WATER && this.life[j] === 0) {
+        this.discover('conduct');
+        this.set(j, E.WATER, 8 + rand() * 8);
+        this.set(i, E.EMPTY); // 能量交出去，火花本身消散
+        return;
+      }
+      if (c === E.GUNPOWDER) {
+        this.igniteCell(j, c); // 走统一殉爆入口（含 boom 发现 + 爆破）
+        continue;
+      }
+      if (c === E.PLANT && rand() < 0.25) {
+        this.discover('scorch');
+        this.set(j, E.SMOKE, 30 + rand() * 30);
+        continue;
+      }
+      if (c === E.SAND && rand() < 0.15) {
+        this.discover('fulgurite');
+        this.set(j, E.GLASS); // 雷击熔沙，真实世界的闪电熔玻璃
+        continue;
+      }
+      if (c === E.SNOW && rand() < 0.4) {
+        this.discover('snow_melt');
+        this.set(j, E.WATER);
+        continue;
+      }
+      const f = FLAMMABLE[c];
+      if (f && rand() < f.chance * 0.4) this.igniteCell(j, c); // 弱于明火：电弧偶尔点燃油木
+    }
+    // 无规则乱窜（等离子火花感）
+    const d = (rand() * 4) | 0;
+    const nx = x + DX4[d];
+    const ny = y + DY4[d];
+    if (this.inBounds(nx, ny) && this.cells[ny * this.w + nx] === E.EMPTY && rand() < 0.8) {
+      this.moveTo(i, ny * this.w + nx);
     }
   }
 
@@ -454,6 +548,7 @@ export class World {
     if (id === E.FIRE) return 40 + rand() * 40;
     if (id === E.STEAM) return 140 + rand() * 90;
     if (id === E.SMOKE) return 50 + rand() * 60;
+    if (id === E.ELECTRIC) return 8 + rand() * 10;
     return 0;
   }
 
@@ -478,8 +573,20 @@ export class World {
         if (c === E.EMPTY) {
           this.set(i, id, this.spawnLife(id));
           n++;
-        } else if (id === E.FIRE && FLAMMABLE[c]) {
-          // 画火直接走统一点燃入口（火药落点即爆）
+        } else if (id === E.ELECTRIC && c === E.WATER) {
+          // 往水里画电：直接通电（波前从落点扩散）
+          if (this.life[i] === 0) {
+            this.discover('conduct');
+            this.set(i, E.WATER, 8 + rand() * 8);
+            n++;
+          }
+        } else if (id === E.ELECTRIC && c === E.PLANT) {
+          // 电直接触植物：焦枯成烟（区别于火的点燃）
+          this.discover('scorch');
+          this.set(i, E.SMOKE, 30 + rand() * 30);
+          n++;
+        } else if ((id === E.FIRE || id === E.ELECTRIC) && FLAMMABLE[c]) {
+          // 画火/电直接走统一点燃入口（火药落点即爆）
           this.igniteCell(i, c);
           n++;
         }

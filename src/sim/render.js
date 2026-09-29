@@ -37,6 +37,28 @@ function makeFireLut() {
   return lut;
 }
 
+// 电火花按剩余寿命从暗金闪到白热（新火花最亮）
+function makeElectricLut() {
+  const stops = [
+    [150, 110, 20],
+    [255, 200, 40],
+    [255, 240, 140],
+    [255, 253, 230],
+  ];
+  const lut = new Uint8Array(48);
+  for (let i = 0; i < 16; i++) {
+    const t = (i / 15) * (stops.length - 1);
+    const s = Math.min(stops.length - 2, Math.floor(t));
+    const f = t - s;
+    const a = stops[s];
+    const b = stops[s + 1];
+    lut[i * 3] = clamp255(a[0] + (b[0] - a[0]) * f);
+    lut[i * 3 + 1] = clamp255(a[1] + (b[1] - a[1]) * f);
+    lut[i * 3 + 2] = clamp255(a[2] + (b[2] - a[2]) * f);
+  }
+  return lut;
+}
+
 // 正弦查找表：星点闪烁 / 水下光影 / 萤火虫呼吸共用
 const LUT_N = 2048;
 const SIN_LUT = new Float32Array(LUT_N);
@@ -75,6 +97,7 @@ export class Renderer {
     };
     this.waterLut = makeShadeLut([52, 112, 210], 0.2);
     this.fireLut = makeFireLut();
+    this.electricLut = makeElectricLut();
     // 经典主题：深夜蓝到暖黑纵向渐变
     this.rowBg = [];
     for (let y = 0; y < h; y++) {
@@ -407,13 +430,27 @@ export class Renderer {
         d[p] = this.fireLut[o];
         d[p + 1] = this.fireLut[o + 1];
         d[p + 2] = this.fireLut[o + 2];
+      } else if (id === E.ELECTRIC) {
+        // 电火花：寿命越长越白热，临近消散转暗金
+        const o = Math.min(15, life[i] << 1) * 3;
+        d[p] = this.electricLut[o];
+        d[p + 1] = this.electricLut[o + 1];
+        d[p + 2] = this.electricLut[o + 2];
       } else if (id === E.WATER || id === E.LAVA || id === E.ACID) {
         // 液体用时间项叠加制造微光流动感
-        const o = (((shade[i] >> 4) + (frame >> 2)) & 15) * 3;
-        const lut = id === E.WATER ? this.waterLut : this.luts[id];
-        d[p] = lut[o];
-        d[p + 1] = lut[o + 1];
-        d[p + 2] = lut[o + 2];
+        if (id === E.WATER && life[i] > 0) {
+          // 通电水：高频亮黄频闪
+          const o = (((shade[i] >> 4) + (frame << 1)) & 15) * 3;
+          d[p] = this.electricLut[o];
+          d[p + 1] = this.electricLut[o + 1];
+          d[p + 2] = this.electricLut[o + 2];
+        } else {
+          const o = (((shade[i] >> 4) + (frame >> 2)) & 15) * 3;
+          const lut = id === E.WATER ? this.waterLut : this.luts[id];
+          d[p] = lut[o];
+          d[p + 1] = lut[o + 1];
+          d[p + 2] = lut[o + 2];
+        }
       } else {
         const o = (shade[i] >> 4) * 3;
         const lut = this.luts[id];

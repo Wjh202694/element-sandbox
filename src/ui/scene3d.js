@@ -607,11 +607,10 @@ export function create3DScene(world, host, renderer2d) {
     scene.fog.far = maxDim * 3.4;
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(liveSync, 120);
-    toggleBtn.innerHTML = biomeIcon('volcano', 'td-ico') + '<span>返回火山岛</span>';
+    setModeLabel();
   }
 
-  function exitLive() {
-    mode = 'island';
+  function disposeLive() {
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = 0;
@@ -624,7 +623,16 @@ export function create3DScene(world, host, renderer2d) {
     }
     live = null;
     liveBase.visible = false;
-    enterIsland();
+  }
+
+  // 任意模式间直达切换：先拆当前观赏对象，再进目标
+  function switchTo(target) {
+    if (target === mode) return;
+    if (mode === 'sea') disposeSea();
+    else if (mode === 'live') disposeLive();
+    if (target === 'island') enterIsland();
+    else if (target === 'sea') seaStart();
+    else liveStart();
   }
 
   function tickLive() {
@@ -1125,7 +1133,7 @@ export function create3DScene(world, host, renderer2d) {
     controls.maxDistance = S * 2.6;
     scene.fog.near = S * 1.2;
     scene.fog.far = S * 3.2;
-    toggleBtn.innerHTML = systemIcon('mirror', 'td-ico') + '<span>实景同步</span>';
+    setModeLabel();
   }
 
   function enterIsland() {
@@ -1142,7 +1150,7 @@ export function create3DScene(world, host, renderer2d) {
     controls.maxDistance = S * 2.4;
     scene.fog.near = S * 0.9;
     scene.fog.far = S * 2.6;
-    toggleBtn.innerHTML = biomeIcon('archipelago', 'td-ico') + '<span>海岛</span>';
+    setModeLabel();
   }
 
   function spawnTsunami(side) {
@@ -1576,20 +1584,55 @@ export function create3DScene(world, host, renderer2d) {
   const overlay = document.createElement('div');
   overlay.className = 'td-overlay';
   overlay.appendChild(renderer.domElement);
-  // 观赏对象三态循环：程序化火山岛 ↔ 程序化海岛 ↔ 2D 世界实景沙盘
+  // 观赏对象下拉菜单：火山岛 / 海岛 / 实景同步 三选一
   toggleBtn = document.createElement('button');
   toggleBtn.type = 'button';
   toggleBtn.className = 'td3d-toggle';
-  toggleBtn.innerHTML = biomeIcon('archipelago', 'td-ico') + '<span>海岛</span>';
-  toggleBtn.title = '切换观赏对象：火山岛 → 海岛 → 实景同步（海岛与实景实时同步喷发与流动）';
-  toggleBtn.onclick = () => {
-    if (mode === 'island') seaStart();
-    else if (mode === 'sea') {
-      disposeSea();
-      liveStart();
-    } else enterIsland();
+  toggleBtn.title = '选择 3D 观赏对象';
+  const menuList = document.createElement('div');
+  menuList.className = 'td3d-menu-list';
+  menuList.hidden = true;
+  const menuItems = [
+    ['island', 'volcano', '火山岛'],
+    ['sea', 'archipelago', '海岛'],
+    ['live', 'mirror', '实景同步'],
+  ].map(([key, ico, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'td3d-item';
+    b.innerHTML =
+      (ico === 'mirror' ? systemIcon(ico, 'td-ico') : biomeIcon(ico, 'td-ico')) +
+      `<span>${label}</span>`;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      menuList.hidden = true;
+      switchTo(key);
+    };
+    menuList.appendChild(b);
+    return { key, b, ico, label };
+  });
+  const setModeLabel = () => {
+    const cur = menuItems.find((i) => i.key === mode);
+    if (cur) {
+      toggleBtn.innerHTML =
+        (cur.ico === 'mirror' ? systemIcon(cur.ico, 'td-ico') : biomeIcon(cur.ico, 'td-ico')) +
+        `<span>${cur.label}</span>`;
+    }
+    for (const i of menuItems) i.b.classList.toggle('on', i.key === mode);
   };
+  toggleBtn.onclick = (e) => {
+    e.stopPropagation();
+    menuList.hidden = !menuList.hidden;
+  };
+  const closeMenu = (e) => {
+    if (!menuList.hidden && !menuList.contains(e.target) && !toggleBtn.contains(e.target)) {
+      menuList.hidden = true;
+    }
+  };
+  document.addEventListener('click', closeMenu);
+  setModeLabel();
   overlay.appendChild(toggleBtn);
+  overlay.appendChild(menuList);
   host.appendChild(overlay);
   // 调试钩子：后台标签 rAF 被节流时可手动渲染一帧（同时推进搭建动画）
   overlay.__renderOnce = () => {
@@ -1651,6 +1694,7 @@ export function create3DScene(world, host, renderer2d) {
     toggleBtn.remove();
     if (mode === 'sea') disposeSea();
     volcanoRumble(0);
+    document.removeEventListener('click', closeMenu);
     if (live) {
       for (const kind of ['solid', 'glow']) {
         const mesh = live.meshes[kind];

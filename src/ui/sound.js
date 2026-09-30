@@ -144,13 +144,76 @@ export function soundEnabled() {
 
 export function toggleSound() {
   enabled = !enabled;
-  if (!enabled) pourEnd();
+  if (!enabled) {
+    pourEnd();
+    seaAmbientStop(); // 环境音一并停
+  }
   try {
     localStorage.setItem(KEY, enabled ? '1' : '0');
   } catch {
     /* 忽略 */
   }
   return enabled;
+}
+
+// ===== 海岛环境音：低通白噪做涌浪，LFO 缓慢调制音量 =====
+let ambient = null; // { src, lfo, gain }
+
+export function seaAmbientStart() {
+  if (!enabled || !ensureCtx() || ambient) return;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuf;
+  src.loop = true;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 480;
+  const gain = ctx.createGain();
+  gain.gain.value = 0.05;
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 0.14;
+  const lfoGain = ctx.createGain();
+  lfoGain.gain.value = 0.035;
+  lfo.connect(lfoGain).connect(gain.gain);
+  src.connect(filter).connect(gain).connect(master);
+  src.start();
+  lfo.start();
+  ambient = { src, lfo, gain };
+}
+
+export function seaAmbientStop() {
+  if (!ambient || !ctx) return;
+  const { src, lfo, gain } = ambient;
+  ambient = null;
+  gain.gain.cancelScheduledValues(ctx.currentTime);
+  gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+  gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+  setTimeout(() => {
+    try {
+      src.stop();
+      lfo.stop();
+    } catch {
+      /* 已停止 */
+    }
+  }, 900);
+}
+
+// 雷声：低通噪声轰鸣，频段滚落 + 慢起快衰包络
+export function thunder() {
+  if (!enabled || !ensureCtx()) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(420, t);
+  filter.frequency.exponentialRampToValueAtTime(90, t + 1.4);
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.4, t + 0.06);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+  src.connect(filter).connect(gain).connect(master);
+  src.start(t);
+  src.stop(t + 1.7);
 }
 
 export function initSound() {

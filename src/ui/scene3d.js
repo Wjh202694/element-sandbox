@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
 import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
+import { seaAmbientStart, seaAmbientStop, thunder } from './sound.js';
 
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -238,7 +239,8 @@ export function create3DScene(world, host, renderer2d) {
   const camera = new THREE.PerspectiveCamera(45, host.clientWidth / host.clientHeight, 1, S * 8);
   camera.position.set(0, PEAK * 2.8 + S * 0.3, S * 0.62);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const ambLight = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambLight);
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
   sun.position.set(S * 0.25, PEAK * 2.2, S * 0.5);
   scene.add(sun);
@@ -643,6 +645,8 @@ export function create3DScene(world, host, renderer2d) {
   let stormUntil = 0;
   let lastBolt = 0;
   let tsunamiCount = 0;
+  let syncLastK = -1; // 已触发的 2D 海啸轮次（真同步模式）
+  let activeBoltXs = new Map(); // 已镜像的 2D 落雷列 → 过期帧
 
   // 棕榈：两段外弯细干 + 十字扇形叶冠
   function addPalm(arr, x, z, g) {
@@ -771,6 +775,7 @@ export function create3DScene(world, host, renderer2d) {
 
   function disposeSea() {
     disposeFauna();
+    seaAmbientStop();
     if (seaPlane) {
       scene.remove(seaPlane);
       seaPlane.geometry.dispose();
@@ -809,6 +814,7 @@ export function create3DScene(world, host, renderer2d) {
       hull: new THREE.MeshLambertMaterial({ color: 0x7a5230 }),
       sail: new THREE.MeshLambertMaterial({ color: 0xf5f2e8 }),
       twinkle: new THREE.MeshBasicMaterial({ color: 0xdff1ff, transparent: true, opacity: 0.9 }),
+      spout: new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.55 }),
     };
     // 两个鱼群：半透明水下绕圆游弋
     const fishes = [];
@@ -865,6 +871,24 @@ export function create3DScene(world, host, renderer2d) {
     fauna = { fishes, dolphins, gulls, boat, sparkles, mats, boatPh: rand() * Math.PI * 2, t0 };
   }
 
+  // 鲸鱼：深灰巨躯巡游外海，周期拱背出水、气孔喷白水柱
+  function buildWhale() {
+    if (!fauna) return;
+    const whale = new THREE.Group();
+    whale.add(new THREE.Mesh(new THREE.BoxGeometry(6.5, 1.6, 2.4), fauna.mats.dolphin));
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 0.4), fauna.mats.dolphin);
+    fin.position.set(2.6, 0.55, 0);
+    whale.add(fin);
+    const spout = new THREE.Mesh(new THREE.BoxGeometry(0.35, 2.6, 0.35), fauna.mats.spout);
+    spout.position.set(-2.6, 2.3, 0);
+    spout.visible = false;
+    whale.add(spout);
+    scene.add(whale);
+    fauna.whale = whale;
+    fauna.spout = spout;
+    fauna.whalePh = rand() * Math.PI * 2;
+  }
+
   function disposeFauna() {
     if (!fauna) return;
     const kill = (o) => {
@@ -876,6 +900,7 @@ export function create3DScene(world, host, renderer2d) {
     for (const d of fauna.dolphins) kill(d.mesh);
     for (const g of fauna.gulls) kill(g.g);
     kill(fauna.boat);
+    if (fauna.whale) kill(fauna.whale);
     for (const s of fauna.sparkles) kill(s.mesh);
     for (const k in fauna.mats) fauna.mats[k].dispose();
     fauna = null;
@@ -938,6 +963,20 @@ export function create3DScene(world, host, renderer2d) {
     for (const s of fauna.sparkles) {
       s.mesh.visible = ready && Math.sin(t * s.sp + s.ph) > 0.55;
     }
+    // 鲸鱼：深海巡游，周期拱背喷水
+    if (fauna.whale) {
+      const wa = fauna.whalePh + t * 0.02;
+      const surf = Math.max(0, Math.sin(t * 0.09));
+      fauna.whale.position.set(
+        Math.cos(wa) * S * 0.42,
+        SEA_H - 1.15 + surf * 1.95,
+        Math.sin(wa) * S * 0.42
+      );
+      fauna.whale.rotation.y = -(wa + Math.PI / 2);
+      fauna.whale.visible = ready;
+      fauna.spout.visible = ready && surf > 0.78;
+      fauna.spout.scale.y = 0.55 + Math.sin(now * 0.02) * 0.35;
+    }
   }
 
   function seaStart() {
@@ -960,6 +999,9 @@ export function create3DScene(world, host, renderer2d) {
     scene.add(seaPlane);
     boltMat = new THREE.MeshBasicMaterial({ color: 0xffe95e, transparent: true, opacity: 0.95 });
     buildFauna();
+    buildWhale();
+    seaAmbientStart(); // 海浪环境音
+    syncLastK = Math.floor(world.frame / 3600); // 不重放已过去的事件
     nextTsunami = performance.now() + 9000; // 首场海啸 9 秒后，之后 60 秒一轮
     nextStorm = performance.now() + 15000; // 首轮雷暴 15 秒后，之后 25 秒一轮
     stormUntil = 0;
@@ -992,6 +1034,62 @@ export function create3DScene(world, host, renderer2d) {
     toggleBtn.innerHTML = biomeIcon('archipelago', 'td-ico') + '<span>海岛</span>';
   }
 
+  function spawnTsunami(side) {
+    const now = performance.now();
+    const wallH = SEA_H + 7;
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(3, wallH, S * 1.1),
+      new THREE.MeshLambertMaterial({ color: 0x3f7fd9, transparent: true, opacity: 0.85 })
+    );
+    mesh.position.set(side === 0 ? -S * 0.62 : S * 0.62, wallH / 2 - 1, 0);
+    mesh.scale.y = 0.05;
+    scene.add(mesh);
+    seaTsunami = { mesh, t0: now, side, dur: 4600 };
+    tsunamiCount++;
+  }
+
+  function spawnBolt(bx) {
+    thunder(); // 雷声（sound.js 内部自检开关）
+    const now = performance.now();
+    const bz = (rand() - 0.5) * S * 1.05;
+    const gi = Math.max(0, Math.min(S - 1, Math.round(bx + R)));
+    const gj = Math.max(0, Math.min(S - 1, Math.round(bz + R)));
+    const botY = seaSurface[gi * S + gj];
+    const topY = maxH + 14;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, topY - botY, 0.7), boltMat);
+    mesh.position.set(bx, (topY + botY) / 2, bz);
+    scene.add(mesh);
+    const light = new THREE.PointLight(0xffe95e, 0, S * 0.5);
+    light.position.set(bx, botY + 3, bz);
+    scene.add(light);
+    seaBolts.push({ mesh, light, t0: now });
+  }
+
+  // 昼夜光照联动：2D「昼夜循环」主题时，3D 太阳方位/色温/强度随同一时钟转动
+  const DAY_CYCLE = 14400;
+  let skyLit = false;
+  function tickSkyLight() {
+    if (state.theme !== 'daycycle') {
+      if (skyLit) {
+        skyLit = false;
+        sun.position.set(S * 0.25, PEAK * 2.2, S * 0.5);
+        sun.intensity = 1.5;
+        sun.color.setHex(0xffffff);
+        ambLight.intensity = 0.55;
+      }
+      return;
+    }
+    skyLit = true;
+    const phase = (world.frame % DAY_CYCLE) / DAY_CYCLE; // 0 午夜 / 0.25 日出 / 0.5 正午 / 0.75 日落
+    const elev = Math.sin((phase - 0.25) * Math.PI * 2);
+    const az = (phase - 0.25) * Math.PI * 2;
+    sun.position.set(Math.cos(az) * S * 0.6, Math.max(S * 0.05, elev * S * 0.5) + 6, S * 0.25);
+    sun.intensity = 0.35 + Math.max(0, elev) * 1.35;
+    const warm = Math.max(0, 1 - Math.abs(elev) * 2.2) * (elev > -0.3 ? 1 : 0);
+    sun.color.setRGB(1, 1 - warm * 0.35, 1 - warm * 0.62);
+    ambLight.intensity = 0.22 + Math.max(0, elev) * 0.4;
+  }
+
   function tickSea() {
     tickBuild(); // 搭建进度 + 底座撑开
     if (!seaPlane) return;
@@ -1000,20 +1098,52 @@ export function create3DScene(world, host, renderer2d) {
     const grow = Math.min(1, buildUniform.value * 2.5 + 0.001);
     seaPlane.scale.set(grow, 1, grow);
     seaPlane.position.y = SEA_H - 0.8 + Math.sin(now * 0.0011) * 0.16; // 潮汐微起伏
-    // 海啸：60 秒一轮左右交替——水墙立起 → 横扫海面 → 消散
-    if (!seaTsunami && now >= nextTsunami) {
-      const side = tsunamiCount % 2;
-      const wallH = SEA_H + 7;
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(3, wallH, S * 1.1),
-        new THREE.MeshLambertMaterial({ color: 0x3f7fd9, transparent: true, opacity: 0.85 })
-      );
-      mesh.position.set(side === 0 ? -S * 0.62 : S * 0.62, wallH / 2 - 1, 0);
-      mesh.scale.y = 0.05;
-      scene.add(mesh);
-      seaTsunami = { mesh, t0: now, side, dur: 4600 };
-      tsunamiCount++;
-      nextTsunami = now + 60000;
+    // 天气：2D 群岛图时与真实模拟同帧同步，其余地图走本地演出节奏
+    const syncWeather = window.__sb?.mapObj?.id === 'archipelago';
+    if (syncWeather) {
+      const fr = world.frame;
+      // 海啸：与 2D tick 同帧起墙，左右岸一致
+      const k = Math.floor(fr / 3600);
+      if (fr >= 2400 && k > syncLastK && !seaTsunami) {
+        syncLastK = k;
+        spawnTsunami(k % 2);
+      }
+      // 雷暴：镜像 2D 落雷位置（2D 落雷会在天顶写出电火花列）
+      if (fr >= 1500 && fr % 1500 < 300) {
+        const top = Math.min(24, world.h);
+        for (let x = 0; x < world.w; x++) {
+          let hit = false;
+          for (let y = 0; y < top; y++) {
+            if (world.cells[y * world.w + x] === E.ELECTRIC) {
+              hit = true;
+              break;
+            }
+          }
+          if (hit && !activeBoltXs.has(x)) {
+            activeBoltXs.set(x, fr + 45);
+            spawnBolt((x / (world.w - 1) - 0.5) * S * 1.05);
+          }
+        }
+        for (const [x, exp] of activeBoltXs) {
+          if (fr > exp) activeBoltXs.delete(x);
+        }
+      } else if (activeBoltXs.size) {
+        activeBoltXs.clear();
+      }
+    } else {
+      // 本地演出节奏（非群岛图时兜底）
+      if (!seaTsunami && now >= nextTsunami) {
+        spawnTsunami(tsunamiCount % 2);
+        nextTsunami = now + 60000;
+      }
+      if (now >= nextStorm) {
+        stormUntil = now + 5000;
+        nextStorm = now + 25000;
+      }
+      if (now < stormUntil && now - lastBolt > 830 && seaBolts.length < 3) {
+        lastBolt = now;
+        spawnBolt((rand() - 0.5) * S * 1.05);
+      }
     }
     if (seaTsunami) {
       const p = (now - seaTsunami.t0) / seaTsunami.dur;
@@ -1031,26 +1161,10 @@ export function create3DScene(world, host, renderer2d) {
         m.material.opacity = 0.85 * (1 - Math.max(0, (p - 0.8) / 0.2));
       }
     }
-    // 雷暴：25 秒一轮窗口 5 秒，天顶劈电火花柱 + 点光闪烁
-    if (now >= nextStorm) {
+    // 雷暴已并入上方天气分派；这里只做本地节奏的窗口推进
+    if (!syncWeather && now >= nextStorm) {
       stormUntil = now + 5000;
       nextStorm = now + 25000;
-    }
-    if (now < stormUntil && now - lastBolt > 830 && seaBolts.length < 3) {
-      lastBolt = now;
-      const bx = (rand() - 0.5) * S * 1.05;
-      const bz = (rand() - 0.5) * S * 1.05;
-      const gi = Math.max(0, Math.min(S - 1, Math.round(bx + R)));
-      const gj = Math.max(0, Math.min(S - 1, Math.round(bz + R)));
-      const botY = seaSurface[gi * S + gj];
-      const topY = maxH + 14;
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, topY - botY, 0.7), boltMat);
-      mesh.position.set(bx, (topY + botY) / 2, bz);
-      scene.add(mesh);
-      const light = new THREE.PointLight(0xffe95e, 0, S * 0.5);
-      light.position.set(bx, botY + 3, bz);
-      scene.add(light);
-      seaBolts.push({ mesh, light, t0: now });
     }
     for (let n = seaBolts.length - 1; n >= 0; n--) {
       const b = seaBolts[n];
@@ -1090,6 +1204,7 @@ export function create3DScene(world, host, renderer2d) {
   }
   (function loop() {
     raf = requestAnimationFrame(loop);
+    tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
     else tickBuild();
@@ -1121,6 +1236,7 @@ export function create3DScene(world, host, renderer2d) {
   host.appendChild(overlay);
   // 调试钩子：后台标签 rAF 被节流时可手动渲染一帧（同时推进搭建动画）
   overlay.__renderOnce = () => {
+    tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
     else tickBuild();
@@ -1155,6 +1271,8 @@ export function create3DScene(world, host, renderer2d) {
             items: items.length,
             fish: fauna?.fishes.length ?? 0,
             gulls: fauna?.gulls.length ?? 0,
+            syncK: syncLastK,
+            frame: world.frame,
           }
         : null,
   });

@@ -726,6 +726,15 @@ export function create3DScene(world, host, renderer2d) {
         arr.push({ x: i, z: j, y0: 0, h: 2, sx: 1, sz: 1, rgb: C_STONE, glow: false });
         if (c.h > 3) arr.push({ x: i, z: j, y0: 2, h: c.h - 3, sx: 1, sz: 1, rgb: C_SAND, glow: false });
         arr.push({ x: i, z: j, y0: c.h - 1, h: 1, sx: 1, sz: 1, rgb: c.cap, glow: false });
+        if (c.cap === C_PLANT && rand() < 0.14) {
+          // 草皮点缀：灌木丛与野花
+          if (rand() < 0.4) {
+            arr.push({ x: i, z: j, y0: c.h, h: 0.7, sx: 0.75, sz: 0.75, rgb: [44, 126, 54], glow: false });
+          } else {
+            const fc = [[232, 92, 92], [255, 214, 110], [244, 244, 244]][(rand() * 3) | 0];
+            arr.push({ x: i, z: j, y0: c.h, h: 0.35, sx: 0.4, sz: 0.4, rgb: fc, glow: false });
+          }
+        }
       } else {
         arr.push({ x: i, z: j, y0: 0, h: c.h, sx: 1, sz: 1, rgb: c.cap, glow: false });
       }
@@ -761,6 +770,7 @@ export function create3DScene(world, host, renderer2d) {
   }
 
   function disposeSea() {
+    disposeFauna();
     if (seaPlane) {
       scene.remove(seaPlane);
       seaPlane.geometry.dispose();
@@ -786,6 +796,150 @@ export function create3DScene(world, host, renderer2d) {
     seaSurface = null;
   }
 
+  // ===== 海岛生态：鱼群 / 跃海豚 / 海鸥 / 帆船 / 波光 =====
+  let fauna = null;
+
+  function buildFauna() {
+    const t0 = performance.now();
+    const mats = {
+      fishA: new THREE.MeshLambertMaterial({ color: 0xe8923c }),
+      fishB: new THREE.MeshLambertMaterial({ color: 0xb9c4cf }),
+      dolphin: new THREE.MeshLambertMaterial({ color: 0x7a92a8 }),
+      gull: new THREE.MeshLambertMaterial({ color: 0xf2f5f8 }),
+      hull: new THREE.MeshLambertMaterial({ color: 0x7a5230 }),
+      sail: new THREE.MeshLambertMaterial({ color: 0xf5f2e8 }),
+      twinkle: new THREE.MeshBasicMaterial({ color: 0xdff1ff, transparent: true, opacity: 0.9 }),
+    };
+    // 两个鱼群：半透明水下绕圆游弋
+    const fishes = [];
+    for (const [cx, cz, r] of [
+      [-S * 0.18, S * 0.12, S * 0.1],
+      [S * 0.22, -S * 0.14, S * 0.08],
+    ]) {
+      for (let n = 0; n < 8; n++) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.3, 0.9), n % 2 ? mats.fishA : mats.fishB);
+        scene.add(mesh);
+        fishes.push({ mesh, cx, cz, r: r * (0.8 + rand() * 0.4), ph: rand() * Math.PI * 2, sp: 0.5 + rand() * 0.3, y: 3.1 + rand() * 0.5 });
+      }
+    }
+    // 跃海豚：三只轮流表演抛物线跳
+    const dolphins = [];
+    for (let n = 0; n < 3; n++) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.55), mats.dolphin);
+      mesh.visible = false;
+      scene.add(mesh);
+      dolphins.push({ mesh, next: t0 + 5000 + n * 9000, dur: 1700, live: false, x0: 0, z0: 0, dx: 0, dz: 0 });
+    }
+    // 海鸥：绕主岛盘旋，双翼扑动
+    const gulls = [];
+    for (let n = 0; n < 3; n++) {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.3, 0.8), mats.gull));
+      const wl = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.08, 0.3), mats.gull);
+      wl.position.x = -0.75;
+      const wr = wl.clone();
+      wr.position.x = 0.75;
+      g.add(wl);
+      g.add(wr);
+      scene.add(g);
+      gulls.push({ g, wl, wr, r: S * (0.16 + rand() * 0.08), ph: rand() * Math.PI * 2, sp: 0.25 + rand() * 0.15, y: SEA_H + 12 + rand() * 4 });
+    }
+    // 帆船：绕群岛缓慢巡游
+    const boat = new THREE.Group();
+    boat.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 2.6), mats.hull));
+    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.3, 0.14), mats.hull);
+    mast.position.y = 1.4;
+    boat.add(mast);
+    const sail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.7, 1.3), mats.sail);
+    sail.position.set(0, 1.5, -0.2);
+    boat.add(sail);
+    scene.add(boat);
+    // 波光：海面随机闪烁的小亮片
+    const sparkles = [];
+    for (let n = 0; n < 26; n++) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.34), mats.twinkle);
+      mesh.position.set((rand() - 0.5) * S * 1.15, SEA_H + 0.06, (rand() - 0.5) * S * 1.15);
+      scene.add(mesh);
+      sparkles.push({ mesh, ph: rand() * Math.PI * 2, sp: 0.9 + rand() * 1.4 });
+    }
+    fauna = { fishes, dolphins, gulls, boat, sparkles, mats, boatPh: rand() * Math.PI * 2, t0 };
+  }
+
+  function disposeFauna() {
+    if (!fauna) return;
+    const kill = (o) => {
+      scene.remove(o);
+      o.traverse?.((c) => c.geometry?.dispose());
+      o.geometry?.dispose();
+    };
+    for (const f of fauna.fishes) kill(f.mesh);
+    for (const d of fauna.dolphins) kill(d.mesh);
+    for (const g of fauna.gulls) kill(g.g);
+    kill(fauna.boat);
+    for (const s of fauna.sparkles) kill(s.mesh);
+    for (const k in fauna.mats) fauna.mats[k].dispose();
+    fauna = null;
+  }
+
+  function tickFauna(now) {
+    if (!fauna) return;
+    const t = (now - fauna.t0) / 1000;
+    const ready = !building; // 搭建未完成时生态先不上场
+    // 鱼群绕圆
+    for (const f of fauna.fishes) {
+      const a = f.ph + t * f.sp * 0.35;
+      f.mesh.position.set(f.cx + Math.cos(a) * f.r, f.y, f.cz + Math.sin(a) * f.r);
+      f.mesh.rotation.y = -a;
+      f.mesh.visible = ready;
+    }
+    // 跃海豚：抛物线跃水，落水后随机间隔再来
+    for (const d of fauna.dolphins) {
+      const p = (now - d.next) / d.dur;
+      if (p < 0 || p >= 1) {
+        d.mesh.visible = false;
+        if (p >= 1) {
+          d.next = now + 6000 + rand() * 8000;
+          d.live = false;
+        }
+        continue;
+      }
+      if (!d.live) {
+        d.live = true;
+        const a = rand() * Math.PI * 2;
+        const rr = S * (0.1 + rand() * 0.3);
+        d.x0 = Math.cos(a) * rr;
+        d.z0 = Math.sin(a) * rr;
+        const dir = a + Math.PI / 2;
+        d.dx = Math.cos(dir) * 6;
+        d.dz = Math.sin(dir) * 6;
+      }
+      d.mesh.visible = ready;
+      d.mesh.position.set(d.x0 + d.dx * p, SEA_H - 0.4 + Math.sin(p * Math.PI) * 4.2, d.z0 + d.dz * p);
+      d.mesh.rotation.y = -Math.atan2(d.dz, d.dx);
+      d.mesh.rotation.z = -Math.cos(p * Math.PI) * 0.9;
+    }
+    // 海鸥盘旋 + 扑翼
+    for (const g of fauna.gulls) {
+      const a = g.ph + t * g.sp;
+      g.g.position.set(Math.cos(a) * g.r, g.y + Math.sin(t * 0.7 + g.ph) * 1.2, Math.sin(a) * g.r);
+      g.g.rotation.y = -(a + Math.PI / 2);
+      g.g.visible = ready;
+      const flap = Math.sin(t * 9 + g.ph) * 0.55;
+      g.wl.rotation.z = flap;
+      g.wr.rotation.z = -flap;
+    }
+    // 帆船巡游 + 轻摇
+    const ba = fauna.boatPh + t * 0.028;
+    fauna.boat.position.set(Math.cos(ba) * S * 0.33, SEA_H + 0.25 + Math.sin(t * 1.3) * 0.12, Math.sin(ba) * S * 0.33);
+    fauna.boat.rotation.y = -(ba + Math.PI / 2);
+    fauna.boat.rotation.z = Math.sin(t * 0.9) * 0.05;
+    fauna.boat.visible = ready;
+    // 波光闪烁
+    for (const s of fauna.sparkles) {
+      s.mesh.visible = ready && Math.sin(t * s.sp + s.ph) > 0.55;
+    }
+  }
+
   function seaStart() {
     mode = 'sea';
     disposeTerrainMeshes();
@@ -805,6 +959,7 @@ export function create3DScene(world, host, renderer2d) {
     seaPlane.scale.setScalar(0.001);
     scene.add(seaPlane);
     boltMat = new THREE.MeshBasicMaterial({ color: 0xffe95e, transparent: true, opacity: 0.95 });
+    buildFauna();
     nextTsunami = performance.now() + 9000; // 首场海啸 9 秒后，之后 60 秒一轮
     nextStorm = performance.now() + 15000; // 首轮雷暴 15 秒后，之后 25 秒一轮
     stormUntil = 0;
@@ -841,6 +996,7 @@ export function create3DScene(world, host, renderer2d) {
     tickBuild(); // 搭建进度 + 底座撑开
     if (!seaPlane) return;
     const now = performance.now();
+    tickFauna(now);
     const grow = Math.min(1, buildUniform.value * 2.5 + 0.001);
     seaPlane.scale.set(grow, 1, grow);
     seaPlane.position.y = SEA_H - 0.8 + Math.sin(now * 0.0011) * 0.16; // 潮汐微起伏
@@ -993,7 +1149,13 @@ export function create3DScene(world, host, renderer2d) {
       : null,
     sea:
       mode === 'sea'
-        ? { tsunami: !!seaTsunami, bolts: seaBolts.length, items: items.length }
+        ? {
+            tsunami: !!seaTsunami,
+            bolts: seaBolts.length,
+            items: items.length,
+            fish: fauna?.fishes.length ?? 0,
+            gulls: fauna?.gulls.length ?? 0,
+          }
         : null,
   });
 

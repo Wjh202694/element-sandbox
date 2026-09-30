@@ -216,6 +216,42 @@ export function thunder() {
   src.stop(t + 1.7);
 }
 
+// ===== 火山低鸣：常驻低通噪声，音量由 3D 侧按喷发强度调制 =====
+let rumble = null; // { src, gain }
+
+export function volcanoRumble(level) {
+  if (!enabled || level <= 0) {
+    if (rumble && ctx) {
+      const { src, gain } = rumble;
+      rumble = null;
+      gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.3);
+      setTimeout(() => {
+        try {
+          src.stop();
+        } catch {
+          /* 已停止 */
+        }
+      }, 1200);
+    }
+    return;
+  }
+  if (!ensureCtx()) return;
+  if (!rumble) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 130;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    src.connect(filter).connect(gain).connect(master);
+    src.start();
+    rumble = { src, gain };
+  }
+  rumble.gain.gain.setTargetAtTime(level * 0.28, ctx.currentTime, 0.4);
+}
+
 export function initSound() {
   const btn = document.getElementById('btn-sound');
   if (!btn) return;

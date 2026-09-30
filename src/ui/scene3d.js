@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
 import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
-import { seaAmbientStart, seaAmbientStop, thunder } from './sound.js';
+import { seaAmbientStart, seaAmbientStop, thunder, volcanoRumble } from './sound.js';
 
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -1202,12 +1202,150 @@ export function create3DScene(world, host, renderer2d) {
     // 圆盘先行撑开，随后方块落下
     disc.scale.setScalar(Math.min(1, buildUniform.value * 2.5 + 0.001));
   }
+  // ===== 火山喷发同步：与 2D 火山 tick 同一时钟（VOLCANO_CYCLE=1500）=====
+  // phase<200 喷发（熔岩柱冲天+飞溅熔岩滴）→ phase≥1380 青烟前兆 → 余烬火星常飘
+  const VOLCANO_CYCLE = 1500;
+  let craterFx = null;
+
+  function ensureCraterFx() {
+    if (craterFx) return;
+    const mats = {
+      lava: new THREE.MeshBasicMaterial({ color: 0xff8a3d, transparent: true, opacity: 0.92 }),
+      ember: new THREE.MeshBasicMaterial({ color: 0xffc46a }),
+    };
+    const light = new THREE.PointLight(0xff6a2a, 1.2, S * 0.45);
+    light.position.set(0, PEAK + 3, 0);
+    scene.add(light);
+    const fountain = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1, 2.2), mats.lava);
+    fountain.position.set(0, PEAK, 0);
+    fountain.visible = false;
+    scene.add(fountain);
+    const blobs = [];
+    for (let n = 0; n < 6; n++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), mats.lava);
+      m.visible = false;
+      scene.add(m);
+      blobs.push({ mesh: m, t0: 0, dur: 1, x0: 0, z0: 0, dx: 0, dz: 0 });
+    }
+    const smoke = [];
+    for (let n = 0; n < 5; n++) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 2.2, 2.2),
+        new THREE.MeshLambertMaterial({ color: 0x8a939d, transparent: true, opacity: 0.4 })
+      );
+      m.visible = false;
+      scene.add(m);
+      smoke.push({ mesh: m, born: -1 });
+    }
+    const embers = [];
+    for (let n = 0; n < 12; n++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), mats.ember);
+      m.visible = false;
+      scene.add(m);
+      embers.push({ mesh: m, y: -1, vy: 0, x: 0, z: 0, drift: 0 });
+    }
+    craterFx = { mats, light, fountain, blobs, smoke, embers, erupting: false, phase: 0 };
+  }
+
+  function tickVolcanoFx() {
+    const active = mode === 'island' && !building;
+    if (!active) {
+      volcanoRumble(0);
+      if (craterFx) {
+        craterFx.fountain.visible = false;
+        craterFx.light.intensity = 0;
+        for (const e of craterFx.embers) e.mesh.visible = false;
+        for (const s of craterFx.smoke) s.mesh.visible = false;
+        for (const b of craterFx.blobs) b.mesh.visible = false;
+      }
+      return;
+    }
+    ensureCraterFx();
+    const now = performance.now();
+    const phase = world.frame % VOLCANO_CYCLE;
+    const erupting = phase < 200;
+    craterFx.erupting = erupting;
+    craterFx.phase = phase;
+    const riseP = Math.min(1, phase / 200 / 0.55);
+    // 熔岩柱：高度随喷发段推进（沿用 2D 的缓出公式），火口冲天
+    craterFx.fountain.visible = erupting;
+    if (erupting) {
+      const h = Math.max(1, Math.round(PEAK * 0.9 * (1 - (1 - riseP) ** 2)));
+      craterFx.fountain.scale.y = h;
+      craterFx.fountain.position.y = PEAK + h / 2;
+      craterFx.fountain.rotation.y += 0.04;
+    }
+    craterFx.light.intensity = erupting ? 3.4 + Math.sin(now * 0.02) * 0.8 : 1.2;
+    // 飞溅熔岩滴：喷发段抛物线抛出
+    for (const b of craterFx.blobs) {
+      if (!b.mesh.visible) {
+        if (!erupting || rand() > 0.06) continue;
+        const a = rand() * Math.PI * 2;
+        b.x0 = 0;
+        b.z0 = 0;
+        b.dx = Math.cos(a) * (3 + rand() * 5);
+        b.dz = Math.sin(a) * (3 + rand() * 5);
+        b.t0 = now;
+        b.dur = 900 + rand() * 500;
+        b.mesh.visible = true;
+      }
+      const p = (now - b.t0) / b.dur;
+      if (p >= 1) {
+        b.mesh.visible = false;
+        continue;
+      }
+      b.mesh.position.set(
+        b.x0 + b.dx * p,
+        PEAK + 2 + Math.sin(p * Math.PI) * PEAK * 0.5,
+        b.z0 + b.dz * p
+      );
+    }
+    // 前兆青烟：喷发前 2 秒火口断续冒烟
+    const omen = phase >= VOLCANO_CYCLE - 120 && !erupting;
+    for (const s of craterFx.smoke) {
+      if (s.born < 0) {
+        if (!omen || rand() > 0.02) continue;
+        s.born = now;
+        s.mesh.position.set((rand() - 0.5) * 6, PEAK + 3, (rand() - 0.5) * 6);
+        s.mesh.visible = true;
+      }
+      const p = (now - s.born) / 2200;
+      if (p >= 1) {
+        s.born = -1;
+        s.mesh.visible = false;
+        continue;
+      }
+      s.mesh.position.y += 0.05;
+      s.mesh.rotation.y += 0.01;
+      s.mesh.material.opacity = 0.4 * (1 - p);
+    }
+    // 余烬火星：火口常飘，喷发时更密
+    for (const e of craterFx.embers) {
+      if (e.y < 0 || e.y > PEAK + 12) {
+        e.y = PEAK - 2 + rand() * 3;
+        e.x = (rand() - 0.5) * Rv * 0.9;
+        e.z = (rand() - 0.5) * Rv * 0.9;
+        e.vy = (erupting ? 0.1 : 0.06) + rand() * 0.08;
+        e.drift = rand() * Math.PI * 2;
+      }
+      e.y += e.vy;
+      e.x += Math.sin(e.y * 0.1 + e.drift) * 0.03;
+      e.mesh.position.set(e.x, e.y, e.z);
+      e.mesh.visible = true;
+    }
+    // 低鸣：平时低吟，喷发轰鸣
+    volcanoRumble(erupting ? 1 : 0.18);
+  }
+
   (function loop() {
     raf = requestAnimationFrame(loop);
     tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
-    else tickBuild();
+    else {
+      tickBuild();
+      tickVolcanoFx();
+    }
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
       bgTex.needsUpdate = true;
@@ -1239,7 +1377,10 @@ export function create3DScene(world, host, renderer2d) {
     tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
-    else tickBuild();
+    else {
+      tickBuild();
+      tickVolcanoFx();
+    }
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
       bgTex.needsUpdate = true;
@@ -1275,6 +1416,10 @@ export function create3DScene(world, host, renderer2d) {
             frame: world.frame,
           }
         : null,
+    volcano:
+      mode === 'island' && craterFx
+        ? { eruption: craterFx.erupting, phase: craterFx.phase }
+        : null,
   });
 
   return function dispose() {
@@ -1284,6 +1429,7 @@ export function create3DScene(world, host, renderer2d) {
     controls.dispose();
     toggleBtn.remove();
     if (mode === 'sea') disposeSea();
+    volcanoRumble(0);
     if (live) {
       for (const kind of ['solid', 'glow']) {
         const mesh = live.meshes[kind];

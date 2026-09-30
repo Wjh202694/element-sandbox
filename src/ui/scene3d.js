@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
 import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
-import { seaAmbientStart, seaAmbientStop, thunder, volcanoRumble } from './sound.js';
+import { seaAmbientStart, seaAmbientStop, thunder, volcanoRumble, waveCrash } from './sound.js';
 
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -647,6 +647,7 @@ export function create3DScene(world, host, renderer2d) {
   let tsunamiCount = 0;
   let syncLastK = -1; // 已触发的 2D 海啸轮次（真同步模式）
   let activeBoltXs = new Map(); // 已镜像的 2D 落雷列 → 过期帧
+  let seaIslandXs = []; // 岛屿世界 x 坐标（浪花炸点）
 
   // 棕榈：两段外弯细干 + 十字扇形叶冠
   function addPalm(arr, x, z, g) {
@@ -783,9 +784,19 @@ export function create3DScene(world, host, renderer2d) {
       seaPlane = null;
     }
     if (seaTsunami) {
-      scene.remove(seaTsunami.mesh);
-      seaTsunami.mesh.geometry.dispose();
-      seaTsunami.mesh.material.dispose();
+      if (seaTsunami.segs) {
+        for (const m of seaTsunami.segs) {
+          scene.remove(m);
+          m.geometry.dispose();
+          m.material.dispose();
+        }
+        for (const f of seaTsunami.foam) {
+          scene.remove(f);
+          f.geometry.dispose();
+          f.material.dispose();
+        }
+      }
+      scene.position.set(0, 0, 0);
       seaTsunami = null;
     }
     for (const b of seaBolts) {
@@ -850,16 +861,70 @@ export function create3DScene(world, host, renderer2d) {
       scene.add(g);
       gulls.push({ g, wl, wr, r: S * (0.16 + rand() * 0.08), ph: rand() * Math.PI * 2, sp: 0.25 + rand() * 0.15, y: SEA_H + 12 + rand() * 4 });
     }
-    // 帆船：绕群岛缓慢巡游
-    const boat = new THREE.Group();
-    boat.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 2.6), mats.hull));
-    const mast = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.3, 0.14), mats.hull);
-    mast.position.y = 1.4;
-    boat.add(mast);
-    const sail = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.7, 1.3), mats.sail);
-    sail.position.set(0, 1.5, -0.2);
-    boat.add(sail);
-    scene.add(boat);
+    // 船队：大小帆船 + 渔船 + 货船 + 渔筏，形式大小数量各异；海啸会推船、掀翻小船
+    const boats = [];
+    const part = (g, w, h, d, mat) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      g.add(m);
+      return m;
+    };
+    const addBoat = (kind, g, r, ph, sp, dir) => {
+      scene.add(g);
+      boats.push({
+        g, kind, r, ph, sp, dir,
+        disp: { x: 0, z: 0 },
+        rock: 0, state: 'sail', st: 0, hit: false, sinkDir: 1,
+      });
+    };
+    {
+      const g = new THREE.Group();
+      part(g, 1.2, 0.6, 3.0, mats.hull);
+      const mast = part(g, 0.16, 2.6, 0.16, mats.hull);
+      mast.position.y = 1.55;
+      const sail = part(g, 0.09, 1.9, 1.5, mats.sail);
+      sail.position.set(0, 1.7, -0.25);
+      addBoat('sailboat', g, S * 0.3, 0.6, 0.033, 1);
+    }
+    {
+      const g = new THREE.Group();
+      part(g, 0.9, 0.45, 2.2, mats.hull);
+      const mast = part(g, 0.13, 2.0, 0.13, mats.hull);
+      mast.position.y = 1.2;
+      const sail = part(g, 0.08, 1.4, 1.1, mats.sail);
+      sail.position.set(0, 1.35, -0.2);
+      addBoat('sailboat', g, S * 0.38, 3.6, 0.045, -1);
+    }
+    {
+      const g = new THREE.Group();
+      part(g, 1.3, 0.5, 2.4, mats.hull);
+      const cab = part(g, 0.8, 0.7, 0.8, mats.sail);
+      cab.position.set(0, 0.55, 0.7);
+      const mast = part(g, 0.12, 1.6, 0.12, mats.hull);
+      mast.position.set(0, 1.0, -0.6);
+      addBoat('fishing', g, S * 0.24, 2.2, 0.04, 1);
+    }
+    {
+      const g = new THREE.Group();
+      part(g, 2.1, 0.9, 5.6, new THREE.MeshLambertMaterial({ color: 0x4e5a66 }));
+      const bridge = part(g, 1.3, 1.7, 1.2, mats.sail);
+      bridge.position.set(0, 1.2, -2.0);
+      const boxCols = [0xc9502a, 0x3a7a5a, 0xc9a03c];
+      for (let n = 0; n < 3; n++) {
+        const c = part(g, 1.5, 0.55, 1.0, new THREE.MeshLambertMaterial({ color: boxCols[n] }));
+        c.position.set(0, 0.7, 0.9 - n * 1.15);
+      }
+      addBoat('cargo', g, S * 0.45, 5.1, 0.02, -1);
+    }
+    for (const [r, ph] of [
+      [S * 0.18, 1.2],
+      [S * 0.42, 4.4],
+    ]) {
+      const g = new THREE.Group();
+      part(g, 0.85, 0.22, 1.35, mats.hull);
+      const pole = part(g, 0.07, 1.9, 0.07, mats.hull);
+      pole.position.set(0.3, 0.9, 0);
+      addBoat('raft', g, r, ph, 0.03, 1);
+    }
     // 波光：海面随机闪烁的小亮片
     const sparkles = [];
     for (let n = 0; n < 26; n++) {
@@ -868,7 +933,7 @@ export function create3DScene(world, host, renderer2d) {
       scene.add(mesh);
       sparkles.push({ mesh, ph: rand() * Math.PI * 2, sp: 0.9 + rand() * 1.4 });
     }
-    fauna = { fishes, dolphins, gulls, boat, sparkles, mats, boatPh: rand() * Math.PI * 2, t0 };
+    fauna = { fishes, dolphins, gulls, boats, sparkles, mats, t0 };
   }
 
   // 鲸鱼：深灰巨躯巡游外海，周期拱背出水、气孔喷白水柱
@@ -899,7 +964,7 @@ export function create3DScene(world, host, renderer2d) {
     for (const f of fauna.fishes) kill(f.mesh);
     for (const d of fauna.dolphins) kill(d.mesh);
     for (const g of fauna.gulls) kill(g.g);
-    kill(fauna.boat);
+    for (const b of fauna.boats) kill(b.g);
     if (fauna.whale) kill(fauna.whale);
     for (const s of fauna.sparkles) kill(s.mesh);
     for (const k in fauna.mats) fauna.mats[k].dispose();
@@ -953,12 +1018,57 @@ export function create3DScene(world, host, renderer2d) {
       g.wl.rotation.z = flap;
       g.wr.rotation.z = -flap;
     }
-    // 帆船巡游 + 轻摇
-    const ba = fauna.boatPh + t * 0.028;
-    fauna.boat.position.set(Math.cos(ba) * S * 0.33, SEA_H + 0.25 + Math.sin(t * 1.3) * 0.12, Math.sin(ba) * S * 0.33);
-    fauna.boat.rotation.y = -(ba + Math.PI / 2);
-    fauna.boat.rotation.z = Math.sin(t * 0.9) * 0.05;
-    fauna.boat.visible = ready;
+    // 船队巡游（增量角度，海啸推离后缓缓归位）；小船可能被掀翻沉没，之后重新浮起
+    const dt = Math.min(0.1, (now - (fauna.last || now)) / 1000);
+    fauna.last = now;
+    for (const b of fauna.boats) {
+      if (b.state === 'sunk') {
+        b.st++;
+        if (b.st > 320) {
+          b.state = 'rise';
+          b.st = 0;
+          b.g.visible = true;
+        }
+        continue;
+      }
+      if (b.state === 'rise') {
+        b.st++;
+        const q = Math.min(1, b.st / 90);
+        b.g.position.y = SEA_H + 0.25 - (1 - q) * 1.7;
+        b.g.rotation.z = (1 - q) * 1.1;
+        if (q >= 1) {
+          b.state = 'sail';
+          b.g.rotation.z = 0;
+        }
+        continue;
+      }
+      if (b.state === 'sinking') {
+        b.st++;
+        const q = Math.min(1, b.st / 110);
+        b.g.rotation.z = b.sinkDir * q * 1.45;
+        b.g.position.y = SEA_H + 0.25 - q * 1.7;
+        if (q >= 1) {
+          b.state = 'sunk';
+          b.st = 0;
+          b.g.visible = false;
+          b.disp.x = 0;
+          b.disp.z = 0;
+        }
+        continue;
+      }
+      b.ph += b.sp * b.dir * dt;
+      b.disp.x *= 0.985;
+      b.disp.z *= 0.985;
+      b.g.position.set(
+        Math.cos(b.ph) * b.r + b.disp.x,
+        SEA_H + 0.25 + Math.sin(t * 1.3 + b.ph) * 0.12,
+        Math.sin(b.ph) * b.r + b.disp.z
+      );
+      b.g.rotation.y = -(b.ph + (b.dir > 0 ? Math.PI / 2 : -Math.PI / 2));
+      b.g.rotation.z = Math.sin(t * 0.9 + b.ph) * 0.05 + b.rock;
+      b.rock *= 0.94;
+      b.g.visible = ready;
+    }
     // 波光闪烁
     for (const s of fauna.sparkles) {
       s.mesh.visible = ready && Math.sin(t * s.sp + s.ph) > 0.55;
@@ -1000,6 +1110,7 @@ export function create3DScene(world, host, renderer2d) {
     boltMat = new THREE.MeshBasicMaterial({ color: 0xffe95e, transparent: true, opacity: 0.95 });
     buildFauna();
     buildWhale();
+    seaIslandXs = [-S * 0.3, 0, S * 0.3]; // 大岛世界坐标，浪花炸点
     seaAmbientStart(); // 海浪环境音
     syncLastK = Math.floor(world.frame / 3600); // 不重放已过去的事件
     nextTsunami = performance.now() + 9000; // 首场海啸 9 秒后，之后 60 秒一轮
@@ -1035,17 +1146,37 @@ export function create3DScene(world, host, renderer2d) {
   }
 
   function spawnTsunami(side) {
-    const now = performance.now();
-    const wallH = SEA_H + 7;
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(3, wallH, S * 1.1),
-      new THREE.MeshLambertMaterial({ color: 0x3f7fd9, transparent: true, opacity: 0.85 })
-    );
-    mesh.position.set(side === 0 ? -S * 0.62 : S * 0.62, wallH / 2 - 1, 0);
-    mesh.scale.y = 0.05;
-    scene.add(mesh);
-    seaTsunami = { mesh, t0: now, side, dur: 4600 };
+    // 先海退（海面骤降 1.4 秒，真实海啸前兆），再起巨浪
+    seaTsunami = { mode: 'drawback', t0: performance.now(), side, dur: 1400 };
     tsunamiCount++;
+    if (fauna) for (const b of fauna.boats) b.hit = false;
+  }
+
+  function buildWaveWall(side) {
+    // 多段波体：整体平移 + 逐段起伏 + 波顶白沫 + 撞击段镜头微震
+    const SEGS = 14;
+    const segs = [];
+    const foam = [];
+    for (let n = 0; n < SEGS; n++) {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(5.5, 1, S * 1.1 / SEGS + 0.4),
+        new THREE.MeshLambertMaterial({ color: 0x2e6394, transparent: true, opacity: 0.82 })
+      );
+      mesh.position.z = -S * 0.55 + (n + 0.5) * (S * 1.1 / SEGS);
+      scene.add(mesh);
+      segs.push(mesh);
+      if (n % 2 === 0) {
+        const f = new THREE.Mesh(
+          new THREE.BoxGeometry(5.8, 0.5, S * 1.1 / SEGS + 0.2),
+          new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.85 })
+        );
+        scene.add(f);
+        foam.push(f);
+      }
+    }
+    seaTsunami = {
+      mode: 'sweep', segs, foam, t0: performance.now(), side, dur: 5200, crashed: false,
+    };
   }
 
   function spawnBolt(bx) {
@@ -1063,6 +1194,27 @@ export function create3DScene(world, host, renderer2d) {
     light.position.set(bx, botY + 3, bz);
     scene.add(light);
     seaBolts.push({ mesh, light, t0: now });
+  }
+
+  // 海啸撞船：一定会沿波向推走一段；小船有概率被掀翻沉没（之后重新浮起），货船永不沉
+  function impactBoats(waveX, side, sweep) {
+    if (!fauna || sweep <= 0) return;
+    for (const b of fauna.boats) {
+      if (b.state !== 'sail' || b.hit) continue;
+      const crossed = side === 0 ? b.g.position.x <= waveX : b.g.position.x >= waveX;
+      if (!crossed) continue;
+      b.hit = true;
+      const dir = side === 0 ? 1 : -1;
+      b.disp.x += dir * (3.5 + rand() * 3) * (b.kind === 'cargo' ? 0.35 : 1);
+      b.rock = 0.5 + rand() * 0.35;
+      const sinkP =
+        b.kind === 'raft' ? 0.6 : b.kind === 'sailboat' ? 0.35 : b.kind === 'fishing' ? 0.2 : 0;
+      if (rand() < sinkP) {
+        b.state = 'sinking';
+        b.st = 0;
+        b.sinkDir = rand() < 0.5 ? 1 : -1;
+      }
+    }
   }
 
   // 昼夜光照联动：2D「昼夜循环」主题时，3D 太阳方位/色温/强度随同一时钟转动
@@ -1146,19 +1298,84 @@ export function create3DScene(world, host, renderer2d) {
       }
     }
     if (seaTsunami) {
-      const p = (now - seaTsunami.t0) / seaTsunami.dur;
-      if (p >= 1) {
-        scene.remove(seaTsunami.mesh);
-        seaTsunami.mesh.geometry.dispose();
-        seaTsunami.mesh.material.dispose();
+      const T = seaTsunami;
+      const p = (now - T.t0) / T.dur;
+      const killWave = () => {
+        for (const m of T.segs) {
+          scene.remove(m);
+          m.geometry.dispose();
+          m.material.dispose();
+        }
+        for (const f of T.foam) {
+          scene.remove(f);
+          f.geometry.dispose();
+          f.material.dispose();
+        }
+        scene.position.set(0, 0, 0);
         seaTsunami = null;
+      };
+      if (T.mode === 'drawback') {
+        // 海退前兆：海面骤降再回位，随后巨浪压境
+        if (p >= 1) {
+          buildWaveWall(T.side);
+        } else {
+          seaPlane.position.y = SEA_H - 0.8 - Math.sin(p * Math.PI) * 0.7;
+        }
+      } else if (p >= 1) {
+        killWave();
       } else {
-        const m = seaTsunami.mesh;
-        m.scale.y = Math.min(1, p / 0.22) * (1 - Math.max(0, (p - 0.78) / 0.22) * 0.55);
-        const sweep = Math.max(0, (p - 0.18) / 0.74);
-        const x0 = seaTsunami.side === 0 ? -S * 0.62 : S * 0.62;
-        m.position.x = x0 * (1 - sweep) - x0 * sweep;
-        m.material.opacity = 0.85 * (1 - Math.max(0, (p - 0.8) / 0.2));
+        const x0 = T.side === 0 ? -S * 0.62 : S * 0.62;
+        const sweep = Math.max(0, (p - 0.14) / 0.72);
+        const ease = sweep < 1 ? sweep * sweep * (3 - 2 * sweep) : 1;
+        const waveX = x0 * (1 - ease) - x0 * ease;
+        const crash = sweep > 0.05 && sweep < 0.85;
+        // 撞击段镜头微震（场景级抖动，controls 不受干扰）
+        scene.position.set(
+          crash ? (rand() - 0.5) * 0.5 : 0,
+          crash ? (rand() - 0.5) * 0.4 : 0,
+          0
+        );
+        if (crash && !T.crashed) {
+          T.crashed = true;
+          waveCrash();
+        }
+        // 各段波体：整体推进 + 逐段起伏 + 波顶随涌浪摆动
+        for (let n = 0; n < T.segs.length; n++) {
+          const m = T.segs[n];
+          m.position.x = waveX;
+          const wob = Math.sin(now * 0.004 + n * 1.7) * 0.12;
+          const base = SEA_H + 9;
+          const h =
+            base * (1 + wob) * (p < 0.12 ? p / 0.12 : 1) *
+            (1 - Math.max(0, (p - 0.82) / 0.18) * 0.5);
+          m.scale.y = Math.max(0.05, h);
+          m.position.y = m.scale.y * 0.5 - 1.2;
+          m.rotation.x = crash ? Math.sin(now * 0.01 + n) * 0.1 : 0;
+          m.material.opacity = 0.82 * (1 - Math.max(0, (p - 0.85) / 0.15));
+        }
+        // 白沫骑在波顶
+        for (let n = 0; n < T.foam.length; n++) {
+          const f = T.foam[n];
+          f.position.x = waveX;
+          f.position.y = SEA_H + 8.2 + Math.sin(now * 0.006 + n) * 0.5;
+          f.visible = p > 0.12 && p < 0.88;
+          f.material.opacity = 0.85 * (1 - Math.max(0, (p - 0.8) / 0.2));
+        }
+        impactBoats(waveX, T.side, sweep);
+        // 波前掠过岛屿：岛缘炸起浪花
+        T.splashed = T.splashed || new Set();
+        for (const ix of seaIslandXs) {
+          const crossed = T.side === 0 ? ix <= waveX : ix >= waveX;
+          if (crossed && !T.splashed.has(ix)) {
+            T.splashed.add(ix);
+            for (let k = 0; k < 4; k++) {
+              const m = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), fauna.mats.spout);
+              m.position.set(ix + (rand() - 0.5) * 6, SEA_H + 1, (rand() - 0.5) * S * 0.3);
+              scene.add(m);
+              seaBolts.push({ mesh: m, light: null, t0: now, splash: true });
+            }
+          }
+        }
       }
     }
     // 雷暴已并入上方天气分派；这里只做本地节奏的窗口推进
@@ -1172,12 +1389,14 @@ export function create3DScene(world, host, renderer2d) {
       if (age > 900) {
         scene.remove(b.mesh);
         b.mesh.geometry.dispose();
-        scene.remove(b.light);
+        if (b.light) scene.remove(b.light);
         seaBolts.splice(n, 1);
         continue;
       }
-      b.mesh.visible = Math.sin(age * 0.045) > -0.4; // 频闪
-      b.light.intensity = Math.max(0, 3 * (1 - age / 900));
+      if (!b.splash) {
+        b.mesh.visible = Math.sin(age * 0.045) > -0.4; // 频闪
+        if (b.light) b.light.intensity = Math.max(0, 3 * (1 - age / 900));
+      }
     }
   }
 
@@ -1412,6 +1631,8 @@ export function create3DScene(world, host, renderer2d) {
             items: items.length,
             fish: fauna?.fishes.length ?? 0,
             gulls: fauna?.gulls.length ?? 0,
+            boats: fauna?.boats.length ?? 0,
+            sunk: fauna ? fauna.boats.filter((b) => b.state === 'sunk').length : 0,
             syncK: syncLastK,
             frame: world.frame,
           }

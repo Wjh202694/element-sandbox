@@ -216,6 +216,26 @@ export function thunder() {
   src.stop(t + 1.7);
 }
 
+// 浪涛拍岸：带通噪声频段下扫，急起缓衰
+export function waveCrash() {
+  if (!enabled || !ensureCtx()) return;
+  const t = ctx.currentTime;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(700, t);
+  bp.frequency.exponentialRampToValueAtTime(240, t + 1.1);
+  bp.Q.value = 0.7;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.42, t + 0.1);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+  src.connect(bp).connect(gain).connect(master);
+  src.start(t);
+  src.stop(t + 1.4);
+}
+
 // ===== 火山低鸣：常驻低通噪声，音量由 3D 侧按喷发强度调制 =====
 let rumble = null; // { src, gain }
 

@@ -509,6 +509,170 @@ function cityGen(w) {
   blob(w, px + 4, groundY - 3, 3, 2, E.PLANT);
 }
 
+// 雪山：冰岩尖峰 + 45° 雪裙 + 冰湖 + 周期雪崩
+// 地形关键约束：雪是粉末，坡度 >1 行/列站不住会整体滑塌——
+// 陡峭尖峰覆静态冰壳（ICE 不坠落），松雪只铺在坡度 ≤1 的裙坡与平顶雪台上
+const SNOW_CYCLE = 2400; // 约 40 秒一轮
+const AVALANCHE_START = 2100; // 雪崩窗口起点相位
+const AVALANCHE_LEN = 100; // 雪崩倾泻时长（帧）
+
+function snowMountainGeometry(w) {
+  const spikeH = Math.round(w.h * 0.14);
+  const skirtH = Math.round(w.h * 0.14);
+  const spikeHalf = Math.max(3, Math.round(w.w * 0.07));
+  return {
+    cx: Math.round(w.w * 0.34),
+    baseY: w.h - Math.round(w.h * 0.13),
+    spikeH,
+    skirtH,
+    spikeHalf,
+    skirtHalf: spikeHalf + skirtH, // 裙坡 45°：水平跨距 = 垂直落差
+    cx2: Math.round(w.w * 0.85),
+    coneH2: Math.round(w.h * 0.22),
+    halfW2: Math.max(6, Math.round(w.w * 0.11)),
+    lakeX: Math.round(w.w * 0.66),
+    lakeW: Math.max(8, Math.round(w.w * 0.14)),
+    lakeFloor: w.h - Math.round(w.h * 0.05),
+  };
+}
+
+function snowMountainGen(w) {
+  const { w: W, h: H } = w;
+  const g = snowMountainGeometry(w);
+  const base = g.baseY;
+  // 起伏地基（雪原平缓：起伏压到 ±1 行，保证坡度感知覆雪全覆盖）
+  for (let x = 0; x < W; x++) {
+    const ground = base + Math.round(Math.sin(x * 0.06) + Math.sin(x * 0.017 + 1));
+    for (let y = ground; y < H; y++) put(w, x, y, E.STONE);
+  }
+  // 主峰：平顶雪台 + 陡峭冰岩尖峰 + 45° 雪裙
+  for (let dx = -g.skirtHalf; dx <= g.skirtHalf; dx++) {
+    const x = g.cx + dx;
+    if (x < 0 || x >= W) continue;
+    const ad = Math.abs(dx);
+    let colH = 0;
+    let icy = false;
+    if (ad <= g.spikeHalf * 0.3) {
+      colH = g.skirtH + g.spikeH; // 峰顶雪台（平顶，积雪稳定）
+    } else if (ad <= g.spikeHalf) {
+      colH = Math.round(g.skirtH + g.spikeH * 0.15 + ((g.spikeHalf - ad) / (g.spikeHalf * 0.7)) * g.spikeH * 0.85);
+      icy = true; // 陡坡段：覆静态冰壳
+    } else if (ad <= g.skirtHalf) {
+      colH = Math.round(g.skirtH + g.spikeH * 0.15 - (ad - g.spikeHalf)); // 45° 裙坡
+    }
+    for (let k = 0; k < colH; k++) put(w, x, base - 1 - k, icy && k >= colH - 2 ? E.ICE : E.STONE);
+  }
+  // 次峰：陡峭三角锥，表面结冰壳（colH=0 的坡脚列不塞冰）
+  for (let dx = -g.halfW2; dx <= g.halfW2; dx++) {
+    const x = g.cx2 + dx;
+    if (x < 0 || x >= W) continue;
+    const colH = Math.round(g.coneH2 * (1 - Math.abs(dx) / g.halfW2));
+    if (colH <= 0) continue;
+    for (let k = 0; k <= colH; k++) put(w, x, base - k, k >= colH - 1 ? E.ICE : E.STONE);
+  }
+  // 冰湖：地基里凿盆（留天然石岸），盆底垫回石，水面结双层冰壳，中央留一道裂缝露水
+  const x0 = g.lakeX - (g.lakeW >> 1) + 1;
+  const x1 = x0 + g.lakeW - 2;
+  const surfY = base + 1;
+  const crackX = (x0 + x1) >> 1;
+  fillRect(w, x0, surfY, x1, H - 1, E.EMPTY);
+  fillRect(w, x0, g.lakeFloor, x1, H - 1, E.STONE);
+  fillRect(w, x0, surfY + 2, x1, g.lakeFloor - 1, E.WATER);
+  fillRect(w, x0, surfY, x1, surfY + 1, E.ICE);
+  put(w, crackX, surfY, E.WATER);
+  put(w, crackX, surfY + 1, E.WATER);
+  // 坡度感知覆雪：只把雪铺在稳定地表（相邻列落差 ≤1），越接近峰顶越厚；
+  // 陡坡露岩/冰壳，冰壳水体树木不受影响
+  const surf = new Array(W).fill(H);
+  for (let x = 0; x < W; x++) {
+    let y0 = 0;
+    while (y0 < H && w.cells[y0 * W + x] === E.EMPTY) y0++;
+    surf[x] = y0;
+  }
+  for (let x = 1; x < W - 1; x++) {
+    const drop = Math.max(Math.abs(surf[x] - surf[x - 1]), Math.abs(surf[x] - surf[x + 1]));
+    if (drop > 1) continue;
+    const depth = Math.min(7, 3 + Math.round((base + 2 - surf[x]) / (H * 0.045)));
+    for (let k = 0; k < depth; k++) {
+      const i = (surf[x] + k) * W + x;
+      if (w.cells[i] === E.STONE) w.set(i, E.SNOW);
+    }
+  }
+  // 坡脚雪堆与零星耐寒树（远离山体与湖）
+  blob(w, g.cx - g.skirtHalf - 5, base - 1, 4, 2, E.SNOW);
+  blob(w, Math.min(W - 5, g.cx2 + g.halfW2 + 3), base - 1, 3, 2, E.SNOW);
+  tree(w, Math.round(W * 0.06), base + 1, 6, 3);
+  tree(w, Math.min(W - 3, Math.round(W * 0.97)), base + 1, 5, 2);
+}
+
+// 周期雪崩：前兆闷响 → 雪瀑沿 45° 裙坡自上而下扫过（坡度 ≤1，落雪站得住形成雪街）；
+// 峰顶区出现明火/熔岩/雷电会提前引发。纯帧相位驱动，无定时器。
+function snowMountainTick(w, frame) {
+  if (frame < 600) return;
+  const phase = frame % SNOW_CYCLE;
+  const g = snowMountainGeometry(w);
+  const inWindow = phase >= AVALANCHE_START && phase < AVALANCHE_START + AVALANCHE_LEN;
+  // 积雪期：主峰上空缓落新雪（陡坡上的会被粉末物理自然滑进裙坡）
+  if (!inWindow && phase < AVALANCHE_START - 300 && frame % 24 === 0) {
+    const x = g.cx + (((Math.random() - 0.5) * g.skirtHalf * 2.2) | 0);
+    if (x >= 0 && x < w.w && w.cells[x] === E.EMPTY) w.set(x, E.SNOW);
+  }
+  // 前兆：山体闷响
+  if (phase === AVALANCHE_START - 300 && typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '山体深处传来闷响…', icon: 'snow' } }));
+  }
+  // 触发检测（每 15 帧）：主峰上空整列扫描明火/熔岩/电 → 立即引发雪崩。
+  // 整列而非固定带：峰顶积雪会高出几何山顶，点火点随之水涨船高
+  if (frame % 15 === 0 && !inWindow) {
+    const topY = Math.max(0, g.baseY - g.skirtH - g.spikeH);
+    const bandH = Math.round(g.spikeH * 0.6);
+    const x0 = Math.max(0, g.cx - g.spikeHalf * 2);
+    const x1 = Math.min(w.w - 1, g.cx + g.spikeHalf * 2);
+    let hot = false;
+    for (let x = x0; x <= x1 && !hot; x++) {
+      for (let y = 0; y <= topY + bandH; y++) {
+        const c = w.cells[y * w.w + x];
+        if (c === E.FIRE || c === E.LAVA || c === E.ELECTRIC) {
+          hot = true;
+          break;
+        }
+      }
+    }
+    if (hot) {
+      w.avalancheUntil = frame + AVALANCHE_LEN;
+      w.discover('avalanche');
+      if (typeof document !== 'undefined') {
+        document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '轰隆——雪崩被引发了！', icon: 'snow' } }));
+      }
+    }
+  }
+  const pouring = inWindow || frame < (w.avalancheUntil || 0);
+  if (!pouring) return;
+  if (phase === AVALANCHE_START) w.discover('avalanche');
+  // 倾泻进度决定前锋位置（自裙坡顶扫到坡脚），左右坡逐轮交替
+  const elapsed = inWindow ? phase - AVALANCHE_START : AVALANCHE_LEN - (w.avalancheUntil - frame);
+  const p = 0.1 + 0.85 * Math.max(0, Math.min(1, elapsed / AVALANCHE_LEN));
+  const side = ((frame / SNOW_CYCLE) | 0) % 2 === 0 ? 1 : -1;
+  const gx = g.cx + side * Math.round(g.spikeHalf + p * g.skirtH);
+  const gy = g.baseY - Math.round(g.skirtH * (1 - p));
+  // 释放：从雪街雪毯里取走一格雪——雪崩搬运积雪而非凭空造雪，总量守恒不埋山
+  const rx = gx + (((Math.random() - 0.5) * 13) | 0);
+  if (rx >= 0 && rx < w.w) {
+    const scanTop = Math.max(0, gy - Math.round(g.skirtH * 1.2));
+    for (let y = scanTop; y < g.baseY; y++) {
+      const j = y * w.w + rx;
+      if (w.cells[j] === E.SNOW) {
+        w.set(j, E.EMPTY);
+        break;
+      }
+    }
+  }
+  // 落雪：每帧一粒落在前锋上空（与释放相抵，雪街总量稳定）
+  const x = gx + (((Math.random() - 0.5) * 9) | 0);
+  const y = gy - 2 - ((Math.random() * 4) | 0);
+  if (x >= 0 && x < w.w && y >= 0 && w.cells[y * w.w + x] === E.EMPTY) w.set(y * w.w + x, E.SNOW);
+}
+
 // icon 为制图平涂场景缩略图 key，取值见 src/icons/index.js 的 biomeIcon()
 export const MAPS = [
   { id: 'blank', name: '空白画布', icon: 'blank', desc: '一张白纸，随心创作', gen: blank },
@@ -518,6 +682,7 @@ export const MAPS = [
   { id: 'canyon', name: '峡谷', icon: 'canyon', desc: '峭壁之间一条河', gen: canyon },
   { id: 'desert', name: '沙漠', icon: 'desert', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },
   { id: 'city', name: '玻璃之城', icon: 'glass-city', desc: '高楼林立的方块都市', gen: cityGen },
+  { id: 'snow-mountain', name: '雪山', icon: 'snow-mountain', desc: '双峰雪岭夹冰湖，周期雪崩；山火雷鸣会提前引发', gen: snowMountainGen, tick: snowMountainTick },
 ];
 
 export function generateMap(world, id) {

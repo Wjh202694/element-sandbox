@@ -240,10 +240,10 @@ function count(world, id) {
   check(`玻璃抗酸（${glassBefore} → ${count(w2, E.GLASS)}）`, count(w2, E.GLASS) === glassBefore);
 }
 
-// 16. 七张初始地图生成冒烟：不抛错、填充量合理
+// 16. 八张初始地图生成冒烟：不抛错、填充量合理
 {
   const { MAPS, generateMap } = await import('../src/sim/maps.js');
-  let allOk = MAPS.length === 7;
+  let allOk = MAPS.length === 8;
   const fills = [];
   for (const m of MAPS) {
     const w = makeWorld();
@@ -259,7 +259,7 @@ function count(world, id) {
     // 空白画布允许全空，其余地图至少 500 格
     if (m.id !== 'blank' && n < 500) allOk = false;
   }
-  check(`七张地图生成（${fills.join(' ')}）`, allOk);
+  check(`八张地图生成（${fills.join(' ')}）`, allOk);
 }
 
 // 17. 火山周期喷发：喷发段火口上方出现新熔岩
@@ -624,6 +624,101 @@ function count(world, id) {
     }
   }
   check(`氢快速上浮（60 帧内最高到 y=${topY}）`, topY < 40);
+}
+
+// 35. 雪山：生成含雪与冰 + 雪崩窗口搬运守恒 + 峰顶明火提前引发
+{
+  const { MAPS, generateMap } = await import('../src/sim/maps.js');
+  const w2 = makeWorld();
+  generateMap(w2, 'snow-mountain');
+  check(`雪山生成含雪与冰（雪 ${count(w2, E.SNOW)} 冰 ${count(w2, E.ICE)}）`, count(w2, E.SNOW) > 90 && count(w2, E.ICE) > 25);
+
+  const tick = MAPS.find((m) => m.id === 'snow-mountain').tick;
+  const before = count(w2, E.SNOW);
+  w2.frame = 2400 + 2100; // 雪崩窗口起点，纯 tick 跑满一个窗口（不 step，剔除粉末物理噪声）
+  for (let i = 0; i < 100; i++) {
+    w2.frame++;
+    tick(w2, w2.frame);
+  }
+  const after = count(w2, E.SNOW);
+  check(`周期雪崩搬运守恒（雪 ${before} → ${after}，|Δ|≤80）`, Math.abs(after - before) <= 80);
+
+  const disc = [];
+  const w3 = new World(W, H, (k) => disc.push(k));
+  generateMap(w3, 'snow-mountain');
+  const before3 = count(w3, E.SNOW);
+  // 峰顶放火：找到全图最高非空格，在其上方点燃
+  let top = H;
+  let tx = W >> 1;
+  for (let i = 0; i < w3.cells.length; i++) {
+    if (w3.cells[i] !== E.EMPTY) {
+      const y = (i / W) | 0;
+      if (y < top) {
+        top = y;
+        tx = i % W;
+      }
+    }
+  }
+  w3.paint(tx, top - 2, 1, E.FIRE);
+  w3.frame = 2400 * 3 + 500; // 积雪期，远离周期窗口
+  for (let i = 0; i < 60; i++) {
+    w3.frame++;
+    tick(w3, w3.frame);
+  }
+  check('峰顶明火 → 触发 avalanche 发现', disc.includes('avalanche'));
+  check(`引发雪崩搬运守恒（雪 ${before3} → ${count(w3, E.SNOW)}，|Δ|≤100）`, Math.abs(count(w3, E.SNOW) - before3) <= 100);
+}
+
+// 36. 冰：水邻冰结冰蔓延 + 火/盐融冰 + 电融冰
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) {
+    w2.set(31 * W + x, E.ICE); // 冰板
+    w2.set(35 * W + x, E.STONE); // 池底
+  }
+  for (let y = 32; y <= 34; y++) {
+    w2.set(y * W + 24, E.STONE);
+    w2.set(y * W + 36, E.STONE);
+  }
+  for (let y = 32; y <= 34; y++) {
+    for (let x = 25; x <= 35; x++) w2.set(y * W + x, E.WATER);
+  }
+  const iceBefore = count(w2, E.ICE);
+  for (let s = 0; s < 1500; s++) w2.step();
+  check('水 × 冰 → 触发 freeze 发现', disc.includes('freeze'));
+  check(`结冰蔓延（冰 ${iceBefore} → ${count(w2, E.ICE)}）`, count(w2, E.ICE) > iceBefore);
+
+  const disc2 = [];
+  const w3 = new World(W, H, (k) => disc2.push(k));
+  w3.paint(30, 34, 3, E.ICE);
+  const iceBefore3 = count(w3, E.ICE);
+  w3.paint(30, 31, 1, E.FIRE);
+  for (let s = 0; s < 120; s++) w3.step();
+  check('火 × 冰 → 触发 ice_melt 发现', disc2.includes('ice_melt'));
+  check(`冰融成水/汽（冰 ${iceBefore3} → ${count(w3, E.ICE)}，水+汽 ${count(w3, E.WATER) + count(w3, E.STEAM)}）`, count(w3, E.ICE) < iceBefore3 && count(w3, E.WATER) + count(w3, E.STEAM) > 0);
+
+  const disc3 = [];
+  const w4 = new World(W, H, (k) => disc3.push(k));
+  for (let x = 26; x <= 34; x++) {
+    w4.set(33 * W + x, E.STONE);
+    w4.set(32 * W + x, E.ICE);
+    w4.set(31 * W + x, E.SALT); // 盐铺在冰层上方
+  }
+  const iceBefore4 = count(w4, E.ICE);
+  for (let s = 0; s < 500; s++) w4.step();
+  check('盐 × 冰 → 触发 ice_melt 发现', disc3.includes('ice_melt'));
+  check(`盐融冰（冰 ${iceBefore4} → ${count(w4, E.ICE)}）`, count(w4, E.ICE) < iceBefore4);
+
+  const disc4 = [];
+  const w5 = new World(W, H, (k) => disc4.push(k));
+  for (let x = 26; x <= 34; x++) {
+    w5.set(33 * W + x, E.STONE);
+    w5.set(32 * W + x, E.ICE);
+  }
+  w5.paint(30, 29, 2, E.ELECTRIC); // 冰层正上方撒电火花
+  for (let s = 0; s < 60; s++) w5.step();
+  check('电 × 冰 → 触发 ice_melt 发现', disc4.includes('ice_melt'));
 }
 
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒

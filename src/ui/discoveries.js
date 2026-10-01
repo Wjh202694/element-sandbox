@@ -37,6 +37,9 @@ export const DISCOVERIES = [
   { key: 'melt_metal', icon: 'remelt', name: '金属熔化', formula: '熔岩 × 金属', desc: '烈焰熔金，化作岩浆' },
   { key: 'hydrogen', icon: 'steam', name: '电解得氢', formula: '通电水 × 时间', desc: '水中冒出轻灵的氢气泡' },
   { key: 'detonate', icon: 'explosion', name: '氢爆', formula: '火 × 氢', desc: '氢氧相激，轰然成水' },
+  { key: 'freeze', icon: 'petrify', name: '结冰', formula: '水 × 冰', desc: '静水贴冰，晶化缓缓蔓延' },
+  { key: 'ice_melt', icon: 'snow_melt', name: '融冰', formula: '冰 × 高温/盐/电', desc: '坚冰逢暖，消融成流' },
+  { key: 'avalanche', icon: 'rain', name: '雪崩', formula: '震动 × 积雪', desc: '山火雷鸣震落积雪，一泻千里' },
 ];
 
 let known = loadDiscovered();

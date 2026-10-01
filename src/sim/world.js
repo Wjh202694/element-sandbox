@@ -22,6 +22,7 @@ UPDATERS[E.SALT] = (w, i, x, y) => w.updateSalt(i, x, y);
 UPDATERS[E.GUNPOWDER] = (w, i, x, y) => w.updatePowder(i, x, y, E.GUNPOWDER, null);
 UPDATERS[E.SOIL] = (w, i, x, y) => w.updateSoil(i, x, y);
 UPDATERS[E.SNOW] = (w, i, x, y) => w.updateSnow(i, x, y);
+UPDATERS[E.ICE] = (w, i, x, y) => w.updateIce(i, x, y);
 UPDATERS[E.ELECTRIC] = (w, i, x, y) => w.updateElectric(i, x, y);
 UPDATERS[E.METAL] = (w, i, x, y) => {
   if (w.life[i] > 0) w.updateConductor(i, x, y);
@@ -226,6 +227,19 @@ export class World {
         return;
       }
     }
+    // 邻冰：静水缓慢晶化（结冰从冰缘向水体蔓延，整湖慢慢冻实）
+    if (rand() < 0.004) {
+      for (let k = 0; k < 4; k++) {
+        const nx = x + DX4[k];
+        const ny = y + DY4[k];
+        if (!this.inBounds(nx, ny)) continue;
+        if (this.cells[ny * this.w + nx] === E.ICE) {
+          this.discover('freeze');
+          this.set(i, E.ICE);
+          return;
+        }
+      }
+    }
     this.flow(i, x, y, E.WATER);
   }
 
@@ -346,6 +360,11 @@ export class World {
         this.set(j, E.WATER);
         continue;
       }
+      if (c === E.ICE && rand() < 0.3) {
+        this.discover('ice_melt');
+        this.set(j, E.WATER);
+        continue;
+      }
       const f = FLAMMABLE[c];
       if (f && rand() < f.chance * 0.4) this.igniteCell(j, c); // 弱于明火：电弧偶尔点燃油木
     }
@@ -422,7 +441,7 @@ export class World {
           this.igniteCell(i, c); // 连锁殉爆
           continue;
         }
-        if (c === E.STONE || c === E.WOOD || c === E.PLANT || c === E.GLASS || c === E.SAND || c === E.SOIL) {
+        if (c === E.STONE || c === E.WOOD || c === E.PLANT || c === E.GLASS || c === E.SAND || c === E.SOIL || c === E.ICE) {
           if (rand() < 0.85 - (d2 / R2) * 0.35) {
             this.set(i, rand() < 0.2 ? E.SMOKE : E.EMPTY, 40 + rand() * 40);
           }
@@ -551,6 +570,25 @@ export class World {
       }
     }
     this.updatePowder(i, x, y, E.SNOW, null);
+  }
+
+  // 冰：静态固体（不坠落）；遇高温/盐融水，通电也会融化。
+  // 静水贴冰则反向结冰（见 updateWater），冰湖因此慢慢冻实。
+  updateIce(i, x, y) {
+    for (let k = 0; k < 4; k++) {
+      const nx = x + DX4[k];
+      const ny = y + DY4[k];
+      if (!this.inBounds(nx, ny)) continue;
+      const c = this.cells[ny * this.w + nx];
+      let melt = 0;
+      if (c === E.FIRE || c === E.LAVA) melt = 0.3;
+      else if (c === E.SALT) melt = 0.06;
+      if (melt && rand() < melt) {
+        this.discover('ice_melt');
+        this.set(i, E.WATER);
+        return;
+      }
+    }
   }
 
   // 盐：入水缓慢溶解；贴植物则吸水枯死

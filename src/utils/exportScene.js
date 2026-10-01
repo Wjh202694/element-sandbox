@@ -21,6 +21,10 @@ const PALETTE_SOURCE = [
   { id: 14, name: '酸', color: '#6edc3c', emissive: false },
   { id: 15, name: '土', color: '#8b5e3c', emissive: false },
   { id: 16, name: '雪', color: '#eef4fb', emissive: false },
+  { id: 17, name: '电', color: '#ffe95e', emissive: true },
+  { id: 18, name: '金属', color: '#a8b6c8', emissive: false },
+  { id: 19, name: '氢', color: '#cfe8f8', emissive: false },
+  { id: 20, name: '冰', color: '#cfe4f4', emissive: false },
 ];
 
 export function buildSnapshot(world) {

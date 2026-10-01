@@ -94,6 +94,7 @@ export class Renderer {
       [E.ACID]: makeShadeLut([96, 200, 52], 0.18),
       [E.SOIL]: makeShadeLut([139, 94, 60], 0.18),
       [E.SNOW]: makeShadeLut([238, 244, 252], 0.04),
+      [E.ICE]: makeShadeLut([207, 228, 244], 0.06),
       [E.METAL]: makeShadeLut([168, 182, 200], 0.08),
       [E.H2]: makeShadeLut([207, 232, 248], 0.06),
     };

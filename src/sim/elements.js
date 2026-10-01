@@ -116,7 +116,7 @@ export const EL = {
   [E.ACID]: { name: '酸', ico: 'acid', swatch: '#6edc3c' },
   [E.SOIL]: { name: '土', ico: 'earth', swatch: '#8b5e3c' },
   [E.SNOW]: { name: '雪', ico: 'snow', swatch: '#eef4fb' },
-  [E.ICE]: { name: '冰', ico: 'snow', swatch: '#cfe4f4' }, // ico 暂借 snow，待图标管线补 ice
+  [E.ICE]: { name: '冰', ico: 'ice', swatch: '#cfe4f4' },
   [E.ELECTRIC]: { name: '电', ico: 'electric', swatch: '#ffe95e' },
   [E.METAL]: { name: '金属', ico: 'stone', swatch: '#a8b6c8' }, // ico 暂借 stone，待图标管线补 metal
   [E.H2]: { name: '氢', ico: 'steam', swatch: '#cfe8f8' }, // ico 暂借 steam，待图标管线补 hydrogen

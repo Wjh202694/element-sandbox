@@ -30,6 +30,8 @@ export const E = {
   SOIL: 15,
   SNOW: 16,
   ELECTRIC: 17,
+  METAL: 18,
+  H2: 19,
 };
 
 // 密度：数值大者穿过数值小者下沉（液体/粉末/气体适用）
@@ -45,10 +47,11 @@ export const DENSITY = {
   [E.SALT]: 5,
   [E.SOIL]: 5,
   [E.SNOW]: 3,
+  [E.H2]: 0.4,
 };
 
 export const isFluid = (id) => id === E.WATER || id === E.OIL || id === E.LAVA;
-export const isGas = (id) => id === E.STEAM || id === E.SMOKE;
+export const isGas = (id) => id === E.STEAM || id === E.SMOKE || id === E.H2;
 
 // 可燃物 → 点燃概率（每帧）/ 燃烧寿命（帧）；火药近火即爆
 export const FLAMMABLE = {
@@ -58,7 +61,7 @@ export const FLAMMABLE = {
   [E.GUNPOWDER]: { chance: 0.9, burn: 25 },
 };
 
-// 酸可腐蚀的物质（玻璃抗酸）
+// 酸可腐蚀的物质（玻璃抗酸；金属遇酸蚀刻）
 export const SOLUBLE = new Set([
   E.STONE,
   E.SAND,
@@ -68,6 +71,7 @@ export const SOLUBLE = new Set([
   E.GUNPOWDER,
   E.OIL,
   E.SOIL,
+  E.METAL,
 ]);
 
 // 画笔面板顺序（橡皮擦单独追加）
@@ -87,6 +91,8 @@ export const PALETTE = [
   E.SALT,
   E.ACID,
   E.ELECTRIC,
+  E.METAL,
+  E.H2,
 ];
 
 // ico = 制图平涂图标 key（见 src/icons/index.js 的 elementIcon()）
@@ -109,5 +115,7 @@ export const EL = {
   [E.SOIL]: { name: '土', ico: 'earth', swatch: '#8b5e3c' },
   [E.SNOW]: { name: '雪', ico: 'snow', swatch: '#eef4fb' },
   [E.ELECTRIC]: { name: '电', ico: 'electric', swatch: '#ffe95e' },
+  [E.METAL]: { name: '金属', ico: 'stone', swatch: '#a8b6c8' }, // ico 暂借 stone，待图标管线补 metal
+  [E.H2]: { name: '氢', ico: 'steam', swatch: '#cfe8f8' }, // ico 暂借 steam，待图标管线补 hydrogen
   [E.EMPTY]: { name: '擦', ico: 'eraser', swatch: '' },
 };

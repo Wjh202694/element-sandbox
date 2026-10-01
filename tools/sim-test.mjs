@@ -428,8 +428,13 @@ function count(world, id) {
   }
   check('电 × 水 → 触发 conduct 发现', disc.includes('conduct'));
   check(`水体被通电（采样期带电格峰值计 ${electrified}）`, electrified > 0);
-  for (let s = 0; s < 240; s++) w2.step();
-  check(`火花消散、水回归（剩电 ${count(w2, E.ELECTRIC)}）`, count(w2, E.ELECTRIC) === 0 && count(w2, E.WATER) > 0);
+  // 电解火花会自持链式再通电（亚临界），尾部长——断言「2000 帧内观察到归零」而非固定帧归零
+  let settled = false;
+  for (let s = 0; s < 2000 && !settled; s++) {
+    w2.step();
+    settled = !w2.cells.some((c) => c === E.ELECTRIC);
+  }
+  check(`火花消散、水回归（2000 帧内归零=${settled}）`, settled && count(w2, E.WATER) > 0);
 }
 
 // 28. 电 × 沙 → 闪玻璃（雷击熔沙）
@@ -504,8 +509,121 @@ function count(world, id) {
     tick(w2, w2.frame);
   }
   check(`雷暴落雷（60 帧内电火花 ${count(w2, E.ELECTRIC)} 格）`, count(w2, E.ELECTRIC) > 0);
-  for (let s = 0; s < 600; s++) w2.step(); // 窗口外不再 tick，电火花应全部消散
-  check(`雷火花消散（剩 ${count(w2, E.ELECTRIC)}）`, count(w2, E.ELECTRIC) === 0);
+  // 大海被通电后火花链尾很长（亚临界分支），断言「4000 帧内观察到归零」
+  let settled = false;
+  for (let s = 0; s < 4000 && !settled; s++) {
+    w2.step(); // 窗口外不再 tick，海面噼啪最终自然衰减
+    settled = !w2.cells.some((c) => c === E.ELECTRIC);
+  }
+  check(`雷火花消散（4000 帧内归零=${settled}）`, settled);
+}
+
+// 32. 金属：电×金属传导（wire）+ 通电金属引爆火药
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let y = 33; y <= 35; y++) {
+    for (let x = 24; x <= 36; x++) w2.set(y * W + x, E.METAL);
+  }
+  w2.paint(30, 34, 1, E.ELECTRIC); // 金属梁上画电
+  let energized = 0;
+  for (let s = 0; s < 10; s++) {
+    w2.step();
+    for (let i = 0; i < w2.cells.length; i++) {
+      if (w2.cells[i] === E.METAL && w2.life[i] > 0) energized++;
+    }
+  }
+  check('电 × 金属 → 触发 wire 发现', disc.includes('wire'));
+  check(`金属被通电（采样期带电格峰值计 ${energized}）`, energized > 0);
+
+  const disc2 = [];
+  const w3 = new World(W, H, (k) => disc2.push(k));
+  for (let x = 24; x <= 36; x++) w3.set(35 * W + x, E.METAL);
+  w3.paint(28, 33, 2, E.GUNPOWDER); // 火药堆在金属梁上
+  w3.paint(33, 34, 1, E.ELECTRIC); // 远端通电，沿梁传导引爆
+  for (let s = 0; s < 40; s++) w3.step();
+  check('通电金属 × 火药 → 触发 boom 发现', disc2.includes('boom'));
+}
+
+// 33. 金属：抗火 + 酸蚀刻（etch）+ 熔岩熔化（melt_metal）
+{
+  const w2 = makeWorld();
+  w2.paint(30, 34, 3, E.METAL);
+  w2.paint(30, 31, 1, E.FIRE);
+  for (let s = 0; s < 80; s++) w2.step();
+  check('金属抗火（明火烧不动）', count(w2, E.METAL) > 20);
+
+  const disc = [];
+  const w3 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w3.set(35 * W + x, E.METAL); // 金属碗底
+  for (let y = 31; y <= 34; y++) {
+    w3.set(y * W + 24, E.STONE);
+    w3.set(y * W + 36, E.STONE);
+  }
+  const metalBefore = count(w3, E.METAL);
+  w3.paint(30, 33, 2, E.ACID); // 酸困碗内与金属持续接触
+  for (let s = 0; s < 150; s++) w3.step();
+  check('酸 × 金属 → 触发 etch 发现', disc.includes('etch'));
+  check(`金属被酸蚀（${metalBefore} → ${count(w3, E.METAL)}）`, count(w3, E.METAL) < metalBefore);
+
+  const disc2 = [];
+  const w4 = new World(W, H, (k) => disc2.push(k));
+  for (let x = 24; x <= 36; x++) w4.set(35 * W + x, E.METAL); // 金属碗底
+  for (let y = 31; y <= 34; y++) {
+    w4.set(y * W + 24, E.STONE);
+    w4.set(y * W + 36, E.STONE);
+  } // 石壁锁熔岩，保证持续接触
+  const metalBefore2 = count(w4, E.METAL);
+  w4.paint(30, 33, 2, E.LAVA);
+  for (let s = 0; s < 150; s++) w4.step();
+  check('熔岩 × 金属 → 触发 melt_metal 发现', disc2.includes('melt_metal'));
+  check(`金属被熔成岩浆（余 ${count(w4, E.METAL)}）`, count(w4, E.METAL) < metalBefore2);
+}
+
+// 34. 氢气：电解产氢 + 氢爆成水 + 快速上浮
+{
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE);
+  for (let y = 31; y <= 34; y++) {
+    w2.set(y * W + 24, E.STONE);
+    w2.set(y * W + 36, E.STONE);
+  }
+  for (let y = 32; y <= 34; y++) {
+    for (let x = 25; x <= 35; x++) w2.set(y * W + x, E.WATER);
+  }
+  w2.paint(30, 33, 1, E.ELECTRIC);
+  let peakH2 = 0;
+  for (let s = 0; s < 2400; s++) {
+    w2.step();
+    if (s === 600 || s === 1200 || s === 1800) w2.paint(30, 33, 1, E.ELECTRIC); // 四波充能
+    let n = 0;
+    for (let i = 0; i < w2.cells.length; i++) {
+      if (w2.cells[i] === E.H2) n++;
+    }
+    peakH2 = Math.max(peakH2, n);
+  }
+  check('电解水 → 触发 hydrogen 发现', disc.includes('hydrogen'));
+  check(`电解水产氢（运行期峰值 ${peakH2} 格）`, peakH2 > 0);
+
+  const disc2 = [];
+  const w3 = new World(W, H, (k) => disc2.push(k));
+  for (let x = 28; x <= 32; x++) w3.set(50 * W + x, E.H2);
+  w3.paint(30, 49, 1, E.FIRE); // 氢层上方点火（氢上浮迎火）
+  for (let s = 0; s < 60; s++) w3.step();
+  check('火 × 氢 → 触发 detonate 发现', disc2.includes('detonate'));
+  check('氢爆生成水（物质循环）', count(w3, E.WATER) > 0);
+
+  const w4 = makeWorld();
+  w4.paint(30, 55, 2, E.H2);
+  let topY = H;
+  for (let s = 0; s < 60; s++) {
+    w4.step();
+    for (let i = 0; i < w4.cells.length; i++) {
+      if (w4.cells[i] === E.H2) topY = Math.min(topY, (i / W) | 0);
+    }
+  }
+  check(`氢快速上浮（60 帧内最高到 y=${topY}）`, topY < 40);
 }
 
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒

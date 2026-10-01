@@ -94,6 +94,8 @@ export class Renderer {
       [E.ACID]: makeShadeLut([96, 200, 52], 0.18),
       [E.SOIL]: makeShadeLut([139, 94, 60], 0.18),
       [E.SNOW]: makeShadeLut([238, 244, 252], 0.04),
+      [E.METAL]: makeShadeLut([168, 182, 200], 0.08),
+      [E.H2]: makeShadeLut([207, 232, 248], 0.06),
     };
     this.waterLut = makeShadeLut([52, 112, 210], 0.2);
     this.fireLut = makeFireLut();
@@ -433,6 +435,12 @@ export class Renderer {
       } else if (id === E.ELECTRIC) {
         // 电火花：寿命越长越白热，临近消散转暗金
         const o = Math.min(15, life[i] << 1) * 3;
+        d[p] = this.electricLut[o];
+        d[p + 1] = this.electricLut[o + 1];
+        d[p + 2] = this.electricLut[o + 2];
+      } else if (id === E.METAL && life[i] > 0) {
+        // 通电金属：高频亮黄频闪（与通电水同款电光）
+        const o = (((shade[i] >> 4) + (frame << 1)) & 15) * 3;
         d[p] = this.electricLut[o];
         d[p + 1] = this.electricLut[o + 1];
         d[p + 2] = this.electricLut[o + 2];

@@ -32,6 +32,11 @@ export const DISCOVERIES = [
   { key: 'fulgurite', icon: 'fulgurite', name: '闪玻璃', formula: '电 × 沙', desc: '雷霆熔沙，瞬时成琉璃' },
   { key: 'scorch', icon: 'scorch', name: '焦枯', formula: '电 × 植物', desc: '草木经电，焦烟四起' },
   { key: 'electrolysis', icon: 'conduct', name: '电解', formula: '通电水 × 时间', desc: '水体噼啪作响，汽泡升腾' },
+  { key: 'wire', icon: 'conduct', name: '金属导体', formula: '电 × 金属', desc: '电弧沿金属奔流不息' },
+  { key: 'etch', icon: 'corrode', name: '蚀刻', formula: '酸 × 金属', desc: '强酸蚀金，气泡翻涌' },
+  { key: 'melt_metal', icon: 'remelt', name: '金属熔化', formula: '熔岩 × 金属', desc: '烈焰熔金，化作岩浆' },
+  { key: 'hydrogen', icon: 'steam', name: '电解得氢', formula: '通电水 × 时间', desc: '水中冒出轻灵的氢气泡' },
+  { key: 'detonate', icon: 'explosion', name: '氢爆', formula: '火 × 氢', desc: '氢氧相激，轰然成水' },
 ];
 
 let known = loadDiscovered();

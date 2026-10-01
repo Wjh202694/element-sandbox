@@ -89,6 +89,8 @@ export class World {
         else if (id === E.SOIL) this.updateSoil(i, x, y);
         else if (id === E.SNOW) this.updateSnow(i, x, y);
         else if (id === E.ELECTRIC) this.updateElectric(i, x, y);
+        else if (id === E.METAL && this.life[i] > 0) this.updateConductor(i, x, y);
+        else if (id === E.H2) this.updateHydrogen(i, x, y);
       }
     }
   }
@@ -120,38 +122,53 @@ export class World {
     }
   }
 
-  updateWater(i, x, y) {
-    // 通电状态（借 life 标记，id 仍是水）：新鲜期（life>6）向 8 向传导，
-    // 之后进入静默衰减——否则相邻两格会互相回充，湖面永远噼啪不停
-    if (this.life[i] > 0) {
-      this.life[i]--;
-      if (this.life[i] > 6) {
-        for (let k = 0; k < 8; k++) {
-          const nx = x + DX8[k];
-          const ny = y + DY8[k];
-          if (!this.inBounds(nx, ny)) continue;
-          const j = ny * this.w + nx;
-          const c = this.cells[j];
-          if (c === E.GUNPOWDER) {
-            this.igniteCell(j, c); // 通电水引爆火药
-            continue;
-          }
-          if (c === E.WATER && this.life[j] === 0) {
-            this.discover('conduct');
-            this.set(j, E.WATER, 8 + rand() * 8);
-            continue;
-          }
-          if (c === E.PLANT && rand() < 0.03) {
-            this.discover('scorch');
-            this.set(j, E.SMOKE, 30 + rand() * 30);
-            continue;
-          }
+  // 通电体公共传播（水与金属共用）：新鲜期（life>6）波前扩散 + 引爆火药 + 灼焦植物；
+  // 静默衰减期不再扩散——否则相邻两格互相回充，永不消散
+  updateConductor(i, x, y) {
+    this.life[i]--;
+    if (this.life[i] > 6) {
+      for (let k = 0; k < 8; k++) {
+        const nx = x + DX8[k];
+        const ny = y + DY8[k];
+        if (!this.inBounds(nx, ny)) continue;
+        const j = ny * this.w + nx;
+        const c = this.cells[j];
+        if (c === E.GUNPOWDER) {
+          this.igniteCell(j, c); // 通电体引爆火药
+          continue;
         }
+        if ((c === E.WATER || c === E.METAL) && this.life[j] === 0) {
+          const metal = c === E.METAL || this.cells[i] === E.METAL;
+          this.discover(metal ? 'wire' : 'conduct');
+          this.set(j, c, 8 + rand() * 8); // 保持原 id，借 life 标记通电
+          continue;
+        }
+        if (c === E.PLANT && rand() < 0.03) {
+          this.discover('scorch');
+          this.set(j, E.SMOKE, 30 + rand() * 30);
+          continue;
+        }
+      }
+    }
+  }
+
+  updateWater(i, x, y) {
+    // 通电状态（借 life 标记，id 仍是水）：波前传导 + 电解
+    if (this.life[i] > 0) {
+      this.updateConductor(i, x, y);
+      if (this.life[i] > 6) {
         // 电解：偶发冒出电火花（水面噼啪作响的观感来源）
         if (rand() < 0.02) {
           this.discover('electrolysis');
           if (y > 0 && this.cells[i - this.w] === E.EMPTY && rand() < 0.5) {
             this.set(i - this.w, E.ELECTRIC, 5 + rand() * 8);
+          }
+        }
+        // 电解得氢：偶发从水中冒出氢气（与电火花同级，电解水真的冒氢）
+        if (rand() < 0.04) {
+          this.discover('hydrogen');
+          if (y > 0 && this.cells[i - this.w] === E.EMPTY) {
+            this.set(i - this.w, E.H2, 200 + rand() * 100);
           }
         }
       }
@@ -290,9 +307,9 @@ export class World {
       if (!this.inBounds(nx, ny)) continue;
       const j = ny * this.w + nx;
       const c = this.cells[j];
-      if (c === E.WATER && this.life[j] === 0) {
-        this.discover('conduct');
-        this.set(j, E.WATER, 8 + rand() * 8);
+      if ((c === E.WATER || c === E.METAL) && this.life[j] === 0) {
+        this.discover(c === E.METAL ? 'wire' : 'conduct');
+        this.set(j, c, 8 + rand() * 8);
         this.set(i, E.EMPTY); // 能量交出去，火花本身消散
         return;
       }
@@ -425,6 +442,12 @@ export class World {
         this.set(j, E.SMOKE, 40 + rand() * 40);
         continue;
       }
+      if (c === E.METAL && rand() < 0.08) {
+        // 高温熔化金属
+        this.discover('melt_metal');
+        this.set(j, E.LAVA);
+        continue;
+      }
       if (c === E.GLASS && rand() < 0.02) {
         // 高温重熔玻璃
         this.discover('glass_melt');
@@ -463,6 +486,7 @@ export class World {
           if (c === E.STONE) this.discover('corrode');
           else if (c === E.OIL) this.discover('acid_oil');
           else if (c === E.SALT) this.discover('acid_salt');
+          else if (c === E.METAL) this.discover('etch');
           this.set(j, E.EMPTY);
           if (rand() < 0.3) {
             // 每次腐蚀有概率消耗自身
@@ -544,6 +568,36 @@ export class World {
     this.updatePowder(i, x, y, E.SALT, null);
   }
 
+  // 氢气：最轻气体，快速上浮；只被明火/熔岩引爆成水（氢氧相激，物质循环）。
+  // 电火花不引爆氢——否则电解火花比产氢频繁，氢包永远攒不起来
+  updateHydrogen(i, x, y) {
+    for (let k = 0; k < 8; k++) {
+      const nx = x + DX8[k];
+      const ny = y + DY8[k];
+      if (!this.inBounds(nx, ny)) continue;
+      const c = this.cells[ny * this.w + nx];
+      if (c === E.FIRE || c === E.LAVA) {
+        this.discover('detonate');
+        this.set(i, E.WATER); // 燃烧产物：氢氧结合成水
+        this.blast(x, y); // 氢爆当量不小，冲击波照常结算
+        return;
+      }
+    }
+    // 上浮（比蒸汽更快），水中穿行，天顶缓慢逃逸
+    if (y > 0) {
+      const up = i - this.w;
+      if (this.cells[up] === E.EMPTY && rand() < 0.9) return this.moveTo(i, up);
+      if (isFluid(this.cells[up]) && rand() < 0.8) return this.swap(i, up);
+    }
+    const d = (rand() * 4) | 0;
+    const nx = x + DX4[d];
+    const ny = y + DY4[d];
+    if (this.inBounds(nx, ny) && this.cells[ny * this.w + nx] === E.EMPTY && rand() < 0.4) {
+      this.moveTo(i, ny * this.w + nx);
+    }
+    if (y === 0 && rand() < 0.004) this.set(i, E.EMPTY); // 逃逸大气
+  }
+
   spawnLife(id) {
     if (id === E.FIRE) return 40 + rand() * 40;
     if (id === E.STEAM) return 140 + rand() * 90;
@@ -573,11 +627,11 @@ export class World {
         if (c === E.EMPTY) {
           this.set(i, id, this.spawnLife(id));
           n++;
-        } else if (id === E.ELECTRIC && c === E.WATER) {
-          // 往水里画电：直接通电（波前从落点扩散）
+        } else if (id === E.ELECTRIC && (c === E.WATER || c === E.METAL)) {
+          // 往水里/金属上画电：直接通电（波前从落点扩散）
           if (this.life[i] === 0) {
-            this.discover('conduct');
-            this.set(i, E.WATER, 8 + rand() * 8);
+            this.discover(c === E.METAL ? 'wire' : 'conduct');
+            this.set(i, c, 8 + rand() * 8);
             n++;
           }
         } else if (id === E.ELECTRIC && c === E.PLANT) {

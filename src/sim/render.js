@@ -427,7 +427,23 @@ export class Renderer {
     for (let i = 0; i < cells.length; i++, p += 4) {
       const id = cells[i];
       if (id === E.EMPTY) continue;
-      if (id === E.FIRE) {
+      // 分支按出现频率排序：水/熔岩/酸最高频，先判
+      if (id === E.WATER || id === E.LAVA || id === E.ACID) {
+        // 液体用时间项叠加制造微光流动感
+        if (id === E.WATER && life[i] > 0) {
+          // 通电水：高频亮黄频闪
+          const o = (((shade[i] >> 4) + (frame << 1)) & 15) * 3;
+          d[p] = this.electricLut[o];
+          d[p + 1] = this.electricLut[o + 1];
+          d[p + 2] = this.electricLut[o + 2];
+        } else {
+          const o = (((shade[i] >> 4) + (frame >> 2)) & 15) * 3;
+          const lut = id === E.WATER ? this.waterLut : this.luts[id];
+          d[p] = lut[o];
+          d[p + 1] = lut[o + 1];
+          d[p + 2] = lut[o + 2];
+        }
+      } else if (id === E.FIRE) {
         const o = Math.min(15, life[i] >> 3) * 3;
         d[p] = this.fireLut[o];
         d[p + 1] = this.fireLut[o + 1];
@@ -444,21 +460,6 @@ export class Renderer {
         d[p] = this.electricLut[o];
         d[p + 1] = this.electricLut[o + 1];
         d[p + 2] = this.electricLut[o + 2];
-      } else if (id === E.WATER || id === E.LAVA || id === E.ACID) {
-        // 液体用时间项叠加制造微光流动感
-        if (id === E.WATER && life[i] > 0) {
-          // 通电水：高频亮黄频闪
-          const o = (((shade[i] >> 4) + (frame << 1)) & 15) * 3;
-          d[p] = this.electricLut[o];
-          d[p + 1] = this.electricLut[o + 1];
-          d[p + 2] = this.electricLut[o + 2];
-        } else {
-          const o = (((shade[i] >> 4) + (frame >> 2)) & 15) * 3;
-          const lut = id === E.WATER ? this.waterLut : this.luts[id];
-          d[p] = lut[o];
-          d[p + 1] = lut[o + 1];
-          d[p + 2] = lut[o + 2];
-        }
       } else {
         const o = (shade[i] >> 4) * 3;
         const lut = this.luts[id];

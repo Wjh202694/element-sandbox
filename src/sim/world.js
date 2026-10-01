@@ -6,6 +6,28 @@ const DY8 = [0, 0, 1, -1, 1, 1, -1, -1];
 const DX4 = [1, -1, 0, 0];
 const DY4 = [0, 0, 1, -1];
 
+// 分派表：按元素 id 直达更新器（step 每帧扫 3 万格，else-if 链换成 O(1) 查表）。
+// 注意：METAL 的通电更新必须自带 life>0 守卫——updateConductor 会先自减 life，
+// 空守卫会让静置金属的 life 下溢成 255 触发假通电。
+const UPDATERS = [];
+UPDATERS[E.SAND] = (w, i, x, y) => w.updatePowder(i, x, y, E.SAND, 'sink');
+UPDATERS[E.WATER] = (w, i, x, y) => w.updateWater(i, x, y);
+UPDATERS[E.OIL] = (w, i, x, y) => w.updateOil(i, x, y);
+UPDATERS[E.FIRE] = (w, i, x, y) => w.updateFire(i, x, y);
+UPDATERS[E.STEAM] = (w, i, x, y) => w.updateGas(i, x, y, true);
+UPDATERS[E.SMOKE] = (w, i, x, y) => w.updateGas(i, x, y, false);
+UPDATERS[E.LAVA] = (w, i, x, y) => w.updateLava(i, x, y);
+UPDATERS[E.ACID] = (w, i, x, y) => w.updateAcid(i, x, y);
+UPDATERS[E.SALT] = (w, i, x, y) => w.updateSalt(i, x, y);
+UPDATERS[E.GUNPOWDER] = (w, i, x, y) => w.updatePowder(i, x, y, E.GUNPOWDER, null);
+UPDATERS[E.SOIL] = (w, i, x, y) => w.updateSoil(i, x, y);
+UPDATERS[E.SNOW] = (w, i, x, y) => w.updateSnow(i, x, y);
+UPDATERS[E.ELECTRIC] = (w, i, x, y) => w.updateElectric(i, x, y);
+UPDATERS[E.METAL] = (w, i, x, y) => {
+  if (w.life[i] > 0) w.updateConductor(i, x, y);
+};
+UPDATERS[E.H2] = (w, i, x, y) => w.updateHydrogen(i, x, y);
+
 /**
  * 细胞自动机世界：Uint8Array 网格 + 每帧自底向上扫描，
  * 左右方向逐帧交替防漂移；moved 标记保证一格一帧只动一次。
@@ -69,28 +91,20 @@ export class World {
     this.frame++;
     this.moved.fill(0);
     const flip = this.frame & 1;
-    for (let y = this.h - 1; y >= 0; y--) {
-      const row = y * this.w;
-      for (let k = 0; k < this.w; k++) {
-        const x = flip ? k : this.w - 1 - k;
+    const cells = this.cells;
+    const moved = this.moved;
+    const w = this.w;
+    const h = this.h;
+    for (let y = h - 1; y >= 0; y--) {
+      const row = y * w;
+      for (let k = 0; k < w; k++) {
+        const x = flip ? k : w - 1 - k;
         const i = row + x;
-        if (this.moved[i]) continue;
-        const id = this.cells[i];
-        if (id === E.SAND) this.updatePowder(i, x, y, E.SAND, 'sink');
-        else if (id === E.WATER) this.updateWater(i, x, y);
-        else if (id === E.OIL) this.updateOil(i, x, y);
-        else if (id === E.FIRE) this.updateFire(i, x, y);
-        else if (id === E.STEAM) this.updateGas(i, x, y, true);
-        else if (id === E.SMOKE) this.updateGas(i, x, y, false);
-        else if (id === E.LAVA) this.updateLava(i, x, y);
-        else if (id === E.ACID) this.updateAcid(i, x, y);
-        else if (id === E.SALT) this.updateSalt(i, x, y);
-        else if (id === E.GUNPOWDER) this.updatePowder(i, x, y, E.GUNPOWDER, null);
-        else if (id === E.SOIL) this.updateSoil(i, x, y);
-        else if (id === E.SNOW) this.updateSnow(i, x, y);
-        else if (id === E.ELECTRIC) this.updateElectric(i, x, y);
-        else if (id === E.METAL && this.life[i] > 0) this.updateConductor(i, x, y);
-        else if (id === E.H2) this.updateHydrogen(i, x, y);
+        if (moved[i]) continue;
+        const id = cells[i];
+        if (id === E.EMPTY) continue;
+        const updater = UPDATERS[id];
+        if (updater) updater(this, i, x, y);
       }
     }
   }

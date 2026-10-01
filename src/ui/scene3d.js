@@ -212,6 +212,30 @@ export function create3DScene(world, host, renderer2d) {
     addTree(Math.round(R + Math.cos(ang) * r), Math.round(R + Math.sin(ang) * r), 3);
     treeCount++;
   }
+  // 草皮生态：未种树的土柱撒灌木与野花（与海岛同款三色小花）
+  let floraCount = 0;
+  for (const it of soilCols) {
+    if (it.tree || it.h < 3 || floraCount >= 90) continue;
+    if (rand() < 0.72) continue;
+    if (rand() < 0.4) {
+      items.push({ x: it.x, z: it.z, y0: it.h, h: 0.7, sx: 0.75, sz: 0.75, rgb: [44, 126, 54], glow: false });
+    } else {
+      const fc = [[232, 92, 92], [255, 214, 110], [244, 244, 244]][(rand() * 3) | 0];
+      items.push({ x: it.x, z: it.z, y0: it.h, h: 0.35, sx: 0.4, sz: 0.4, rgb: fc, glow: false });
+    }
+    floraCount++;
+  }
+  // 焦黑枯树：锥缘外侧土柱上的烧焦树（深炭色光秃主干，火山性格）
+  for (let n = 0; n < 3; n++) {
+    const near = soilCols.filter(
+      (it) => !it.tree && Math.hypot(it.x - R, it.z - R) < Rv * 1.35
+    );
+    const it = near[(rand() * near.length) | 0];
+    if (!it) break;
+    const th = 4 + ((rand() * 2) | 0);
+    items.push({ x: it.x, z: it.z, y0: it.h, h: th, sx: 0.5, sz: 0.5, rgb: [42, 36, 30], glow: false });
+    items.push({ x: it.x, z: it.z, y0: it.h + th - 1, h: 0.5, sx: 1.1, sz: 0.5, rgb: [42, 36, 30], glow: false });
+  }
 
   // ===== three 场景 =====
   const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
@@ -552,6 +576,7 @@ export function create3DScene(world, host, renderer2d) {
 
   function liveStart() {
     mode = 'live';
+    disposeIslandFauna();
     if (solidMesh) {
       scene.remove(solidMesh);
       solidMesh.dispose();
@@ -1100,6 +1125,7 @@ export function create3DScene(world, host, renderer2d) {
   function seaStart() {
     mode = 'sea';
     disposeTerrainMeshes();
+    disposeIslandFauna();
     liveBase.visible = false;
     items = buildSeaItems();
     maxH = 1;
@@ -1564,6 +1590,99 @@ export function create3DScene(world, host, renderer2d) {
     volcanoRumble(erupting ? 1 : 0.18);
   }
 
+  // ===== 火山岛生态：火山鸦绕火口盘旋 + 森林带萤火虫游弋 =====
+  let islandFauna = null;
+
+  function ensureIslandFauna() {
+    if (islandFauna) return;
+    const mats = {
+      crow: new THREE.MeshLambertMaterial({ color: 0x3a3a46 }),
+      fly: new THREE.MeshBasicMaterial({ color: 0xd4ff7a }),
+    };
+    // 火山鸦：深色巨翼，绕火口高空盘旋
+    const crows = [];
+    for (let n = 0; n < 3; n++) {
+      const g = new THREE.Group();
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 1.1), mats.crow));
+      const wl = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, 0.4), mats.crow);
+      wl.position.x = -0.95;
+      const wr = wl.clone();
+      wr.position.x = 0.95;
+      g.add(wl);
+      g.add(wr);
+      scene.add(g);
+      crows.push({
+        g, wl, wr,
+        r: Rv * (1.05 + rand() * 0.3),
+        ph: rand() * Math.PI * 2,
+        sp: 0.16 + rand() * 0.08,
+        y: PEAK + 11 + rand() * 5,
+      });
+    }
+    // 萤火虫：森林带上空缓慢游弋的自发光点
+    const flies = [];
+    for (let n = 0; n < 14; n++) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.26), mats.fly);
+      const a = rand() * Math.PI * 2;
+      const r = Rv * 1.1 + rand() * Math.max(4, R * 0.92 - Rv * 1.1);
+      scene.add(mesh);
+      flies.push({
+        mesh,
+        cx: Math.cos(a) * r,
+        cz: Math.sin(a) * r,
+        cy: 5 + rand() * 4,
+        ax: 3 + rand() * 4,
+        az: 3 + rand() * 4,
+        s1: 0.2 + rand() * 0.3,
+        s2: 0.4 + rand() * 0.4,
+        s3: 0.25 + rand() * 0.35,
+        p1: rand() * Math.PI * 2,
+        p2: rand() * Math.PI * 2,
+        p3: rand() * Math.PI * 2,
+      });
+    }
+    islandFauna = { crows, flies, mats, t0: performance.now() };
+  }
+
+  function disposeIslandFauna() {
+    if (!islandFauna) return;
+    const kill = (o) => {
+      scene.remove(o);
+      o.traverse?.((c) => c.geometry?.dispose());
+      o.geometry?.dispose();
+    };
+    for (const c of islandFauna.crows) kill(c.g);
+    for (const f of islandFauna.flies) kill(f.mesh);
+    for (const k in islandFauna.mats) islandFauna.mats[k].dispose();
+    islandFauna = null;
+  }
+
+  function tickIslandFauna(now) {
+    if (mode !== 'island') return;
+    if (!islandFauna) ensureIslandFauna();
+    const t = (now - islandFauna.t0) / 1000;
+    const ready = !building;
+    // 火山鸦绕火口
+    for (const c of islandFauna.crows) {
+      const a = c.ph + t * c.sp;
+      c.g.position.set(Math.cos(a) * c.r, c.y + Math.sin(t * 0.6 + c.ph) * 1.4, Math.sin(a) * c.r);
+      c.g.rotation.y = -(a + Math.PI / 2);
+      c.g.visible = ready;
+      const flap = Math.sin(t * 6 + c.ph) * 0.5;
+      c.wl.rotation.z = flap;
+      c.wr.rotation.z = -flap;
+    }
+    // 萤火虫游弋 + 明灭
+    for (const f of islandFauna.flies) {
+      f.mesh.position.set(
+        f.cx + Math.sin(t * f.s1 + f.p1) * f.ax,
+        f.cy + Math.sin(t * f.s2 + f.p2) * 1.6,
+        f.cz + Math.cos(t * f.s3 + f.p3) * f.az
+      );
+      f.mesh.visible = ready && Math.sin(t * 1.7 + f.p2) > -0.6;
+    }
+  }
+
   (function loop() {
     raf = requestAnimationFrame(loop);
     tickSkyLight();
@@ -1572,6 +1691,7 @@ export function create3DScene(world, host, renderer2d) {
     else {
       tickBuild();
       tickVolcanoFx();
+      tickIslandFauna(performance.now());
     }
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
@@ -1642,6 +1762,7 @@ export function create3DScene(world, host, renderer2d) {
     else {
       tickBuild();
       tickVolcanoFx();
+      tickIslandFauna(performance.now());
     }
     if (renderer2d) {
       renderer2d.fillTheme(bgData, state.theme, frame(), W, H);
@@ -1694,6 +1815,7 @@ export function create3DScene(world, host, renderer2d) {
     toggleBtn.remove();
     if (mode === 'sea') disposeSea();
     volcanoRumble(0);
+    disposeIslandFauna();
     document.removeEventListener('click', closeMenu);
     if (live) {
       for (const kind of ['solid', 'glow']) {

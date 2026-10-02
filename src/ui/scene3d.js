@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
 import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
-import { seaAmbientStart, seaAmbientStop, thunder, volcanoRumble, waveCrash } from './sound.js';
+import { seaAmbientStart, seaAmbientStop, geyserHiss, thunder, volcanoRumble, waveCrash } from './sound.js';
 
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -235,6 +235,67 @@ export function create3DScene(world, host, renderer2d) {
     const th = 4 + ((rand() * 2) | 0);
     items.push({ x: it.x, z: it.z, y0: it.h, h: th, sx: 0.5, sz: 0.5, rgb: [42, 36, 30], glow: false });
     items.push({ x: it.x, z: it.z, y0: it.h + th - 1, h: 0.5, sx: 1.1, sz: 0.5, rgb: [42, 36, 30], glow: false });
+  }
+
+  // ===== 火山地貌静物：火口环脊硫磺晶簇 / 熔岩流口黑曜石 / 河岸浮石堆 / 低地温泉池 =====
+  // 直接进 items 走既有实例化渲染：零额外 draw call，自动获得下落入场与明度抖动
+  const hotSprings = []; // 温泉池位置，供间歇泉 FX 取用
+  for (let n = 0; n < 4; n++) {
+    // 硫磺晶簇：火口环脊上 4 簇细高黄晶柱
+    const a = veinSeed + 1.1 + n * 1.55 + rand() * 0.5;
+    const r = Rv * (0.2 + rand() * 0.08);
+    const sx0 = Math.round(R + Math.cos(a) * r);
+    const sz0 = Math.round(R + Math.sin(a) * r);
+    const c = cols.get(sx0 * 1000 + sz0);
+    if (!c || c.id === 11 || c.id === 2) continue;
+    const k = 2 + ((rand() * 2) | 0);
+    for (let m = 0; m < k; m++) {
+      items.push({
+        x: sx0 + ((rand() * 3) | 0) - 1,
+        z: sz0 + ((rand() * 3) | 0) - 1,
+        y0: c.h, h: 1.2 + rand() * 1.4, sx: 0.35, sz: 0.35,
+        rgb: [236, 220, 100], glow: false,
+      });
+    }
+  }
+  for (let k = 0; k < 3; k++) {
+    // 黑曜石碎块：熔岩流冲出锥体的出口外侧，黑紫玻璃碎块散落
+    const a = veinBase[k] + veinOffset(Rv * 0.98, k);
+    for (let m = 0; m < 3; m++) {
+      const r = Rv * (1.05 + rand() * 0.12);
+      const x = Math.round(R + Math.cos(a + (rand() - 0.5) * 0.18) * r);
+      const z = Math.round(R + Math.sin(a + (rand() - 0.5) * 0.18) * r);
+      const c = cols.get(x * 1000 + z);
+      if (!c || c.id === 2) continue;
+      items.push({
+        x, z, y0: c.h, h: 0.6 + rand() * 0.9, sx: 0.5 + rand() * 0.4, sz: 0.5 + rand() * 0.4,
+        rgb: [40, 34, 52], glow: false,
+      });
+    }
+  }
+  for (let n = 0; n < 6; n++) {
+    // 浮石堆：主河岸边的浅灰多孔石块
+    const a = rand() * Math.PI * 2;
+    const rr = riverRadius(a) + (rand() < 0.5 ? -3.8 : 3.8) + (rand() - 0.5) * 1.6;
+    const x = Math.round(R + Math.cos(a) * rr);
+    const z = Math.round(R + Math.sin(a) * rr);
+    const c = cols.get(x * 1000 + z);
+    if (!c || c.id === 2) continue;
+    items.push({
+      x, z, y0: c.h, h: 0.4 + rand() * 0.5, sx: 0.45 + rand() * 0.3, sz: 0.45 + rand() * 0.3,
+      rgb: [188, 186, 178], glow: false,
+    });
+  }
+  for (let n = 0; n < 2; n++) {
+    // 温泉池：低地热泉，青蓝发光池面（自发光，夜里也亮），蒸汽归 FX 层
+    const a = riverSeed + 2.2 + n * 2.6;
+    const rr = Rv * 1.32 + rand() * Math.max(2, R * 0.92 - Rv * 1.42);
+    const x = Math.round(R + Math.cos(a) * rr);
+    const z = Math.round(R + Math.sin(a) * rr);
+    const c = cols.get(x * 1000 + z);
+    if (!c || c.id === 2) continue;
+    hotSprings.push({ x, z, y: c.h });
+    items.push({ x, z, y0: c.h, h: 0.18, sx: 2.3, sz: 2.3, rgb: [64, 208, 224], glow: true });
   }
 
   // ===== three 场景 =====
@@ -576,6 +637,7 @@ export function create3DScene(world, host, renderer2d) {
 
   function liveStart() {
     mode = 'live';
+    hideIslandFx(); // 切走前收起火山岛 FX（余烬/汽柱别悬在实景同步里）
     disposeIslandFauna();
     if (solidMesh) {
       scene.remove(solidMesh);
@@ -1124,6 +1186,7 @@ export function create3DScene(world, host, renderer2d) {
 
   function seaStart() {
     mode = 'sea';
+    hideIslandFx(); // 切走前收起火山岛 FX
     disposeTerrainMeshes();
     disposeIslandFauna();
     liveBase.visible = false;
@@ -1590,6 +1653,193 @@ export function create3DScene(world, host, renderer2d) {
     volcanoRumble(erupting ? 1 : 0.18);
   }
 
+  // ===== 火山地貌动态景观：喷气孔/熔岩流口蒸汽 + 低地间歇泉 + 火口熔岩气泡 =====
+  // 有界实例池：蒸汽一个 InstancedMesh、气泡一个、间歇泉柱一个——新增 draw call ≤ 3
+  let ventFx = null;
+
+  function ensureVentFx() {
+    if (ventFx) return;
+    const mats = {
+      steam: new THREE.MeshLambertMaterial({ color: 0xb9c4ce, transparent: true, opacity: 0.38 }),
+      bubble: new THREE.MeshBasicMaterial({ color: 0xff9a4d }),
+      geyser: new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.5 }),
+    };
+    // 蒸汽点：锥坡喷气孔 5 处 + 熔岩流出口 3 处（熔岩触低地即生白汽）
+    const vents = [];
+    for (let n = 0; n < 5; n++) {
+      const a = veinSeed + 0.75 + n * 1.26 + rand() * 0.4;
+      const r = Rv * (0.52 + rand() * 0.2);
+      const gx = Math.round(R + Math.cos(a) * r);
+      const gz = Math.round(R + Math.sin(a) * r);
+      const gr = Math.hypot(gx - R, gz - R);
+      const ga = Math.atan2(gz - R, gx - R);
+      if (lavaVeinAt(gx - R, gz - R, ga, gr)) continue; // 别压在熔岩纹上
+      const c = cols.get(gx * 1000 + gz);
+      if (!c || c.id === 11 || c.id === 2) continue;
+      vents.push({ x: gx - R + 0.5, z: gz - R + 0.5, y: c.h, big: false, ph: rand() * 3 });
+    }
+    for (let k = 0; k < 3; k++) {
+      const a = veinBase[k] + veinOffset(Rv * 0.98, k);
+      const gx = Math.round(R + Math.cos(a) * Rv);
+      const gz = Math.round(R + Math.sin(a) * Rv);
+      const c = cols.get(gx * 1000 + gz);
+      if (!c || c.id === 2) continue;
+      vents.push({ x: gx - R + 0.5, z: gz - R + 0.5, y: c.h, big: true, ph: k * 1.1 + rand() });
+    }
+    const dummy = new THREE.Object3D();
+    const steam = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mats.steam, Math.max(1, vents.length * 3));
+    steam.frustumCulled = false;
+    const puffs = [];
+    for (const v of vents) {
+      for (let pn = 0; pn < 3; pn++) {
+        puffs.push({ v, off: pn / 3 + rand() * 0.12, sway: rand() * Math.PI * 2, s: (v.big ? 2.6 : 1.6) + rand() });
+      }
+    }
+    steam.count = puffs.length;
+    scene.add(steam);
+    // 间歇泉：立在温泉池上（无温泉则省略），周期喷出白色汽柱
+    let geyser = null;
+    let spring = null;
+    if (hotSprings.length) {
+      spring = hotSprings[0];
+      geyser = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1, 1.7), mats.geyser);
+      geyser.visible = false;
+      scene.add(geyser);
+    }
+    // 火口熔岩湖气泡：湖面鼓包缓慢起伏（呼吸感）
+    const bubbles = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mats.bubble, 6);
+    bubbles.frustumCulled = false;
+    const bub = [];
+    for (let n = 0; n < 6; n++) {
+      const a = rand() * Math.PI * 2;
+      const r = rand() * Rv * 0.14;
+      bub.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, ph: rand() * Math.PI * 2, sp: 0.6 + rand() * 0.9, s: 0.7 + rand() * 0.9 });
+    }
+    scene.add(bubbles);
+    ventFx = { mats, steam, puffs, dummy, geyser, spring, bubbles, bub };
+  }
+
+  // 切走观赏对象 / 退出时收起全部火山岛 FX（挂着的余烬汽柱不该飘进别的模式）
+  function hideIslandFx() {
+    if (craterFx) {
+      craterFx.fountain.visible = false;
+      craterFx.light.intensity = 0;
+      for (const e of craterFx.embers) e.mesh.visible = false;
+      for (const s of craterFx.smoke) s.mesh.visible = false;
+      for (const b of craterFx.blobs) b.mesh.visible = false;
+    }
+    if (ventFx) {
+      ventFx.steam.visible = false;
+      ventFx.bubbles.visible = false;
+      ventFx.geyser.visible = false;
+    }
+    geyserHiss(0);
+  }
+
+  function tickVentFx(now) {
+    const active = mode === 'island' && !building;
+    if (!active) {
+      if (ventFx) {
+        ventFx.steam.visible = false;
+        ventFx.bubbles.visible = false;
+        ventFx.geyser.visible = false;
+      }
+      geyserHiss(0);
+      return;
+    }
+    ensureVentFx();
+    ventFx.steam.visible = true;
+    ventFx.bubbles.visible = true;
+    const t = now / 1000;
+    // 蒸汽团：循环升起、随高度放大再收尾（缩放收尾代替透明度，实例池保持单 draw call）
+    for (let n = 0; n < ventFx.puffs.length; n++) {
+      const p = ventFx.puffs[n];
+      const life = 4.2 + (n % 3) * 0.5;
+      const k = (t / life + p.off) % 1;
+      const rise = k * (p.v.big ? 11 : 7);
+      const sc = Math.max(0.001, p.s * Math.sin(Math.min(1, k * 1.12) * Math.PI) ** 0.7);
+      ventFx.dummy.position.set(
+        p.v.x + Math.sin(t * 0.7 + p.sway) * 0.7 * k,
+        p.v.y + 1 + rise,
+        p.v.z + Math.cos(t * 0.6 + p.sway) * 0.7 * k
+      );
+      ventFx.dummy.rotation.set(0, t * 0.3 + p.sway, 0);
+      ventFx.dummy.scale.setScalar(sc);
+      ventFx.dummy.updateMatrix();
+      ventFx.steam.setMatrixAt(n, ventFx.dummy.matrix);
+    }
+    ventFx.steam.instanceMatrix.needsUpdate = true;
+    // 间歇泉：7 秒一轮，前 29% 喷发（冲顶→回落），伴嘶鸣
+    let erupting = false;
+    if (ventFx.geyser) {
+      const cyc = (t % 7) / 7;
+      erupting = cyc < 0.29;
+      ventFx.geyser.visible = erupting;
+      if (erupting) {
+        const p = cyc / 0.29;
+        const h = 13 * Math.sin(p * Math.PI) ** 0.6;
+        ventFx.geyser.scale.y = Math.max(0.001, h);
+        ventFx.geyser.position.set(
+          ventFx.spring.x - R + 0.5,
+          ventFx.spring.y + h / 2,
+          ventFx.spring.z - R + 0.5
+        );
+        ventFx.geyser.rotation.y += 0.02;
+      }
+    }
+    geyserHiss(erupting ? 0.5 : 0);
+    // 火口熔岩气泡：湖面呼吸式鼓包
+    for (let n = 0; n < ventFx.bub.length; n++) {
+      const b = ventFx.bub[n];
+      const pulse = Math.abs(Math.sin(t * b.sp + b.ph));
+      ventFx.dummy.position.set(b.x, PEAK * 0.7 + pulse * b.s * 0.5, b.z);
+      ventFx.dummy.scale.set(b.s, 0.3 + pulse * b.s * 1.3, b.s);
+      ventFx.dummy.rotation.set(0, t * 0.5 + b.ph, 0);
+      ventFx.dummy.updateMatrix();
+      ventFx.bubbles.setMatrixAt(n, ventFx.dummy.matrix);
+    }
+    ventFx.bubbles.instanceMatrix.needsUpdate = true;
+  }
+
+  function disposeVentFx() {
+    if (!ventFx) return;
+    scene.remove(ventFx.steam);
+    ventFx.steam.geometry.dispose();
+    scene.remove(ventFx.bubbles);
+    ventFx.bubbles.geometry.dispose();
+    if (ventFx.geyser) {
+      scene.remove(ventFx.geyser);
+      ventFx.geyser.geometry.dispose();
+    }
+    for (const k in ventFx.mats) ventFx.mats[k].dispose();
+    ventFx = null;
+  }
+
+  // 补上 craterFx 的释放（原先只建不拆，退出 3D 会泄漏几何与材质）
+  function disposeCraterFx() {
+    if (!craterFx) return;
+    scene.remove(craterFx.light);
+    craterFx.light.dispose();
+    scene.remove(craterFx.fountain);
+    craterFx.fountain.geometry.dispose();
+    for (const b of craterFx.blobs) {
+      scene.remove(b.mesh);
+      b.mesh.geometry.dispose();
+    }
+    for (const s of craterFx.smoke) {
+      scene.remove(s.mesh);
+      s.mesh.geometry.dispose();
+      s.mesh.material.dispose();
+    }
+    for (const e of craterFx.embers) {
+      scene.remove(e.mesh);
+      e.mesh.geometry.dispose();
+    }
+    craterFx.mats.lava.dispose();
+    craterFx.mats.ember.dispose();
+    craterFx = null;
+  }
+
   // ===== 火山岛生态：火山鸦绕火口盘旋 + 森林带萤火虫游弋 =====
   let islandFauna = null;
 
@@ -1691,6 +1941,7 @@ export function create3DScene(world, host, renderer2d) {
     else {
       tickBuild();
       tickVolcanoFx();
+      tickVentFx(performance.now());
       tickIslandFauna(performance.now());
     }
     if (renderer2d) {
@@ -1762,6 +2013,7 @@ export function create3DScene(world, host, renderer2d) {
     else {
       tickBuild();
       tickVolcanoFx();
+      tickVentFx(performance.now());
       tickIslandFauna(performance.now());
     }
     if (renderer2d) {
@@ -1805,6 +2057,7 @@ export function create3DScene(world, host, renderer2d) {
       mode === 'island' && craterFx
         ? { eruption: craterFx.erupting, phase: craterFx.phase }
         : null,
+    vents: mode === 'island' && ventFx ? { puffs: ventFx.puffs.length, geyser: !!ventFx.geyser } : null,
   });
 
   return function dispose() {
@@ -1815,6 +2068,8 @@ export function create3DScene(world, host, renderer2d) {
     toggleBtn.remove();
     if (mode === 'sea') disposeSea();
     volcanoRumble(0);
+    disposeCraterFx();
+    disposeVentFx();
     disposeIslandFauna();
     document.removeEventListener('click', closeMenu);
     if (live) {

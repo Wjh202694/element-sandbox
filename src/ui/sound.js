@@ -272,6 +272,43 @@ export function volcanoRumble(level) {
   rumble.gain.gain.setTargetAtTime(level * 0.28, ctx.currentTime, 0.4);
 }
 
+// ===== 间歇泉喷汽：带通噪声嘶鸣，音量由 3D 侧按喷发强度调制（与火山低鸣同款调制模式）=====
+let hiss = null; // { src, gain }
+
+export function geyserHiss(level) {
+  if (!enabled || level <= 0) {
+    if (hiss && ctx) {
+      const { src, gain } = hiss;
+      hiss = null;
+      gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.2);
+      setTimeout(() => {
+        try {
+          src.stop();
+        } catch {
+          /* 已停止 */
+        }
+      }, 800);
+    }
+    return;
+  }
+  if (!ensureCtx()) return;
+  if (!hiss) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1200;
+    filter.Q.value = 0.6;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    src.connect(filter).connect(gain).connect(master);
+    src.start();
+    hiss = { src, gain };
+  }
+  hiss.gain.gain.setTargetAtTime(level * 0.2, ctx.currentTime, 0.25);
+}
+
 export function initSound() {
   const btn = document.getElementById('btn-sound');
   if (!btn) return;

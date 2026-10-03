@@ -179,11 +179,13 @@ export class World {
             this.set(i - this.w, E.ELECTRIC, 5 + rand() * 8);
           }
         }
-        // 电解得氢：偶发从水中冒出氢气（与电火花同级，电解水真的冒氢）
+        // 电解得氢：耗一份水源，冒一份氢气（真实电解 2H2O→2H2，物质守恒；
+        // 否则氢爆回水=凭空造水，海平面每场雷暴上涨）
         if (rand() < 0.04) {
           this.discover('hydrogen');
           if (y > 0 && this.cells[i - this.w] === E.EMPTY) {
             this.set(i - this.w, E.H2, 200 + rand() * 100);
+            this.set(i, E.EMPTY);
           }
         }
       }
@@ -384,7 +386,8 @@ export class World {
   updateGas(i, x, y, isSteam) {
     if (this.life[i] > 0) this.life[i]--;
     if (this.life[i] === 0) {
-      if (isSteam && rand() < 0.35) {
+      // 蒸汽凝结 100% 归水（水循环守恒：蒸发不再是海水漏洞），烟消散
+      if (isSteam) {
         this.discover('rain');
         this.set(i, E.WATER);
       } else {
@@ -624,8 +627,9 @@ export class World {
     this.updatePowder(i, x, y, E.SALT, null);
   }
 
-  // 氢气：最轻气体，快速上浮；只被明火/熔岩引爆成水（氢氧相激，物质循环）。
-  // 电火花不引爆氢——否则电解火花比产氢频繁，氢包永远攒不起来
+  // 氢气：最轻气体，快速上浮；遇明火/熔岩/电火花爆燃成水（氢氧相激，物质循环）。
+  // 电火花也引爆氢（海雷暴守恒：电解把海变成氢逸散会耗干海洋；氢爆回到水里）。
+  // 电解攒氢仍可行：火花只在通电期间存在，断电后氢可安全攒包，用明火引爆
   updateHydrogen(i, x, y) {
     for (let k = 0; k < 8; k++) {
       const nx = x + DX8[k];
@@ -636,6 +640,12 @@ export class World {
         this.discover('detonate');
         this.set(i, E.WATER); // 燃烧产物：氢氧结合成水
         this.blast(x, y); // 氢爆当量不小，冲击波照常结算
+        return;
+      }
+      if (c === E.ELECTRIC && rand() < 0.4) {
+        this.discover('detonate');
+        this.set(i, E.WATER);
+        this.blast(x, y);
         return;
       }
     }

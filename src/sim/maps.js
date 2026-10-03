@@ -105,12 +105,14 @@ const TSUNAMI_CYCLE = 3600; // 约 60 秒一次，左右岸交替
 const STORM_CYCLE = 1500; // 约 25 秒一轮雷暴
 const STORM_WINDOW = 300; // 雷暴窗口 5 秒，窗内每 50 帧一道雷
 
-// 闪电：纵列电火花从天顶落到该列首个非空格，只写空格不覆盖地形。
+// 闪电：纵列电火花从天顶落到该列首个实体格，只写空格不覆盖地形。
+// 烟/汽不算实体（闪电电离雾气穿过去）——否则晨雾飘上天会挡住所有雷击。
 // 落海触发波前导电、落沙滩烧出闪玻璃、落树焦枯起火——全部复用电元素既有反应。
 function lightningBolt(w, x) {
   for (let y = 0; y < w.h; y++) {
     const i = y * w.w + x;
-    if (w.cells[i] !== E.EMPTY) break;
+    const c = w.cells[i];
+    if (c !== E.EMPTY && c !== E.SMOKE && c !== E.STEAM) break;
     w.set(i, E.ELECTRIC, w.spawnLife(E.ELECTRIC));
   }
 }
@@ -169,6 +171,21 @@ function archipelagoGen(w) {
   tree(w, mx - 3, peakY, 5, 3);
   tree(w, Math.round(W * 0.2) + 3, sea - 3, 4, 2);
   tree(w, Math.round(W * 0.8), sea - 3, 4, 2);
+  // 潮间礁石：岛脚外的零星石礁
+  for (const [fx, fr] of islands) {
+    const cx0 = Math.round(W * fx);
+    const a = Math.random() * Math.PI * 2;
+    const rr = Math.max(3, Math.round(W * fr)) + 3;
+    blob(w, cx0 + Math.round(Math.cos(a) * rr), H - 3, 2, 1, E.STONE);
+  }
+  // 漂流浮木：海面零散木段（静态，浮在水面）
+  for (let n = 0; n < 4; n++) {
+    const x = 2 + ((Math.random() * (W - 8)) | 0);
+    const y = sea;
+    if (w.cells[y * W + x] === E.WATER && w.cells[y * W + x + 1] === E.WATER) {
+      fillRect(w, x, y, x + 1, y, E.WOOD);
+    }
+  }
 }
 
 // 海啸：周期性在岸侧竖起水墙，塌落成巨浪横扫群岛；雷暴窗口随机落雷
@@ -177,6 +194,22 @@ function archipelagoTick(w, frame) {
     lightningBolt(w, (Math.random() * w.w) | 0);
     if (frame % STORM_CYCLE === 0 && typeof document !== 'undefined') {
       document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '雷暴来袭！', icon: 'electric' } }));
+    }
+  }
+  // 鲸群：海啸半程时找开阔海面喷潮（水柱落回海里，零净水量；落点避开岛屿）
+  if (frame > 2400 && frame % TSUNAMI_CYCLE === TSUNAMI_CYCLE / 2) {
+    const sea = Math.round(w.h * 0.52);
+    for (let tries = 0; tries < 6; tries++) {
+      const x = 6 + ((Math.random() * (w.w - 12)) | 0);
+      if (w.cells[(sea - 1) * w.w + x] !== E.EMPTY) continue;
+      for (let k = 1; k <= 4; k++) {
+        const i = (sea - k) * w.w + x;
+        if (w.cells[i] === E.EMPTY) w.set(i, E.WATER);
+      }
+      if (typeof document !== 'undefined') {
+        document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '鲸群跃出了海面！', icon: 'water' } }));
+      }
+      break;
     }
   }
   if (frame < 2400) return;
@@ -270,6 +303,14 @@ function volcanoGen(w) {
   // 远处零星植被
   tree(w, Math.round(W * 0.1), base + 1, 5, 2);
   tree(w, Math.round(W * 0.88), base + 1, 4, 2);
+  // 火山弹：锥脚散落的圆润岩块
+  for (let n = 0; n < 3; n++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = halfW * (1.02 + Math.random() * 0.15);
+    const x = Math.round(cx + Math.cos(a) * r);
+    const y = baseY + 1 + ((Math.random() * 2) | 0);
+    blob(w, x, y, 2, 1, E.STONE);
+  }
 }
 
 // 周期喷发：末段火口冒烟前兆，循环起点抛射熔岩
@@ -284,6 +325,21 @@ function volcanoTick(w, frame) {
       const x = cx + ((Math.random() - 0.5) * halfW * 0.4) | 0;
       const i = (top - 4 - ((Math.random() * 3) | 0)) * w.w + x;
       w.set(i, E.SMOKE, 50 + Math.random() * 60);
+    }
+    // 岩屑滚落：锥坡撒沙，喷发前的震颤剥蚀（沙顺坡滑进火口或山脚）
+    if (frame % 25 === 0) {
+      const side = Math.random() < 0.5 ? 1 : -1;
+      const t = 0.3 + Math.random() * 0.4;
+      const x = cx + side * Math.round(halfW * t);
+      const y = baseY - Math.round(coneH * (1 - t)) - 1;
+      if (y >= 0 && w.cells[y * w.w + x] === E.EMPTY) w.set(y * w.w + x, E.SAND);
+    }
+  } else if (phase >= 260 && phase < VOLCANO_CYCLE - 200) {
+    // 火口熔岩鼓泡：湖面上方鼓起一撮熔岩又落回（呼吸感，零净量）
+    if (frame % 40 === 0) {
+      const bx = cx + ((Math.random() - 0.5) * Math.max(2, Math.round(halfW * 0.15)) | 0);
+      const by = top - 1 - ((Math.random() * 2) | 0);
+      if (by >= 0 && w.cells[by * w.w + bx] === E.EMPTY) w.set(by * w.w + bx, E.LAVA);
     }
   } else if (phase < 200) {
     // 喷发：熔岩柱从火口逐节向上生长（从下往上），长到近天顶维持片刻后熄火回落
@@ -396,6 +452,53 @@ function forest(w) {
       { dy: 5, rx: 0.055, ry: 0.03 },
     ],
   });
+  // 林间苔石与池塘莲叶（静物点缀）
+  for (let n = 0; n < 3; n++) {
+    const x = Math.round(W * (0.1 + Math.random() * 0.8));
+    blob(w, x, surf[x] - 1, 1 + ((Math.random() * 2) | 0), 1, E.STONE);
+  }
+  for (const fx of [0.44, 0.47, 0.5]) {
+    const x = Math.round(W * fx);
+    for (let y = 0; y < H; y++) {
+      if (w.cells[y * W + x] === E.WATER) {
+        put(w, x, y, E.PLANT);
+        break;
+      }
+    }
+  }
+}
+
+// 青山林事件：晨雾漫林（无水净量的烟）+ 稀疏雷击起火（每 4 轮一道，烧出林窗）
+const FOREST_CYCLE = 3600; // 约 60 秒一轮
+function forestTick(w, frame) {
+  if (frame < 400) return;
+  const phase = frame % FOREST_CYCLE;
+  // 晨雾：贴地表起烟，缓缓上升消散
+  if (phase < 900 && frame % 14 === 0) {
+    const x = 1 + ((Math.random() * (w.w - 2)) | 0);
+    for (let y = 0; y < w.h; y++) {
+      const i = y * w.w + x;
+      if (w.cells[i] !== E.EMPTY) {
+        if (y > 0 && w.cells[i - w.w] === E.EMPTY) w.set(i - w.w, E.SMOKE, 60 + Math.random() * 60);
+        break;
+      }
+    }
+  }
+  // 阵雨过林：每 4 轮一场短促阵雨（水从天降，林子喝饱长更密）。
+  // 森林不放闪电——植物点燃概率是全局设定，密林链燃一场雷击=灭图；
+  // 水被植物吸收自限，雨停水尽
+  if (frame % (FOREST_CYCLE * 4) === FOREST_CYCLE * 3 && frame > 400) {
+    w.forestRainUntil = frame + 400;
+    w.forestRainAt = 8 + ((Math.random() * (w.w - 16)) | 0);
+    if (typeof document !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '阵雨过林！', icon: 'water' } }));
+    }
+  }
+  // 阵雨：雨带中心的短促降雨
+  if (w.forestRainUntil && frame <= w.forestRainUntil && frame % 4 === 0) {
+    const x = ((w.forestRainAt + (((Math.random() - 0.5) * 24) | 0)) % w.w + w.w) % w.w;
+    if (w.cells[2 * w.w + x] === E.EMPTY) w.set(2 * w.w + x, E.WATER);
+  }
 }
 
 // 空白画布：什么都不给，自由创作
@@ -424,6 +527,46 @@ function canyon(w) {
   blob(w, Math.round(W * 0.86), plateau - 2, 4, 2, E.PLANT);
   tree(w, Math.round(W * 0.2), plateau - 1, 5, 2);
   tree(w, Math.round(W * 0.78), plateau - 1, 5, 2);
+  // 悬壁栈道：右壁半腰的木板道 + 撑柱
+  const plankY = plateau + 6;
+  fillRect(w, Math.round(W * 0.58), plankY, Math.round(W * 0.655), plankY, E.WOOD);
+  for (const fx of [0.6, 0.645]) {
+    const px = Math.round(W * fx);
+    fillRect(w, px, plankY + 1, px, plankY + 2, E.WOOD);
+  }
+}
+
+// 峡谷事件：谷雾 + 岩壁剥落坠河（沙沉河床，量小有界）
+const CANYON_CYCLE = 2400; // 约 40 秒一轮
+function canyonTick(w, frame) {
+  if (frame < 600) return;
+  const phase = frame % CANYON_CYCLE;
+  // 谷雾：谷底贴水起烟
+  if (phase < 700 && frame % 16 === 0) {
+    const x = Math.round(w.w * (0.38 + Math.random() * 0.24));
+    for (let y = Math.round(w.h * 0.4); y < w.h; y++) {
+      const i = y * w.w + x;
+      if (w.cells[i] !== E.EMPTY) {
+        if (y > 0 && w.cells[i - w.w] === E.EMPTY) w.set(i - w.w, E.SMOKE, 60 + Math.random() * 60);
+        break;
+      }
+    }
+  }
+  // 岩壁剥落：左壁撒沙坠河
+  if (phase >= 1200 && phase < 1400 && frame % 12 === 0) {
+    const x = Math.round(w.w * (0.3 + Math.random() * 0.05));
+    for (let y = Math.round(w.h * 0.42); y < w.h; y++) {
+      const i = y * w.w + x;
+      const c = w.cells[i];
+      if (c !== E.EMPTY && c !== E.WATER) {
+        if (y > 0 && w.cells[i - w.w] === E.EMPTY) w.set(i - w.w, E.SAND);
+        break;
+      }
+    }
+    if (phase === 1200 && typeof document !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '岩壁剥落，碎石坠河！', icon: 'sand' } }));
+    }
+  }
 }
 
 // 沙漠：连绵沙丘 + 地下油穴 + 小绿洲
@@ -448,6 +591,79 @@ function desert(w) {
   blob(w, ox - Math.round(W * 0.04), oy - 2, 2, 2, E.PLANT);
   // 干枯树干
   tree(w, Math.round(W * 0.45), Math.round(H * 0.74), 7, 0);
+  // 仙人掌：远离绿洲的肉质柱（不近水不蔓延；ox 为上方绿洲横坐标）
+  for (let n = 0; n < 5; n++) {
+    const x = Math.round(W * (0.3 + Math.random() * 0.6));
+    if (x < 2 || x > W - 3 || Math.abs(x - ox) < W * 0.08) continue;
+    let y0 = 0;
+    while (y0 < H && w.cells[y0 * W + x] === E.EMPTY) y0++;
+    if (y0 >= H) continue;
+    const ch = 2 + ((Math.random() * 3) | 0);
+    fillRect(w, x, y0 - ch, x, y0 - 1, E.PLANT);
+    fillRect(w, x - 1, y0 - ch, x - 1, y0 - ch, E.PLANT);
+    fillRect(w, x + 1, y0 - ch + 2, x + 1, y0 - ch + 2, E.PLANT);
+  }
+  // 油泉露头：沙面油坑（tick 缓慢渗涨，满则止）
+  const spx = Math.round(W * 0.62);
+  let sy0 = 0;
+  while (sy0 < H && w.cells[sy0 * W + spx] === E.EMPTY) sy0++;
+  if (spx > 3 && spx < W - 4 && sy0 < H - 4) {
+    fillRect(w, spx - 2, sy0, spx + 2, sy0 + 2, E.EMPTY);
+    fillRect(w, spx - 2, sy0 + 3, spx + 2, sy0 + 3, E.SAND);
+    fillRect(w, spx - 1, sy0 + 2, spx + 1, sy0 + 2, E.OIL);
+  }
+}
+
+// 沙漠事件：沙暴横扫 + 绿洲蒸腾（无水净量）+ 油泉渗涨（有界）
+const DESERT_CYCLE = 3000; // 约 50 秒一轮
+function desertTick(w, frame) {
+  if (frame < 600) return;
+  const phase = frame % DESERT_CYCLE;
+  const storm = Math.floor(frame / DESERT_CYCLE) % 2 === 1;
+  // 沙暴：单数轮中段沙墙自左向右横扫（沙归沙丘，缓慢改地形）
+  if (storm && phase >= 700 && phase < 1500) {
+    if (phase === 700 && typeof document !== 'undefined') {
+      document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '沙暴来袭！', icon: 'sand' } }));
+    }
+    if (frame % 8 === 0) {
+      const x = Math.round(((phase - 700) / 800) * (w.w - 12)) + 6 + (((Math.random() - 0.5) * 10) | 0);
+      if (x >= 0 && x < w.w && w.cells[x] === E.EMPTY) w.set(x, E.SAND);
+    }
+  }
+  // 绿洲蒸腾：泉面起烟
+  if (frame % 40 === 0) {
+    const ox = Math.round(w.w * 0.16);
+    for (let y = Math.round(w.h * 0.5); y < w.h; y++) {
+      const i = y * w.w + ox;
+      if (w.cells[i] === E.WATER) {
+        let yy = y - 1;
+        while (yy >= 0 && w.cells[yy * w.w + ox] !== E.EMPTY) yy--;
+        if (yy >= 0) w.set(yy * w.w + ox, E.SMOKE, 50 + Math.random() * 50);
+        break;
+      }
+      if (w.cells[i] !== E.EMPTY && w.cells[i] !== E.SAND && w.cells[i] !== E.PLANT) break;
+    }
+  }
+  // 油泉渗涨：油坑缓慢蓄油（找最顶油格上方的空格生长），满则止
+  if (frame % 240 === 0) {
+    const spx = Math.round(w.w * 0.62);
+    let firstOilY = -1;
+    let oilN = 0;
+    for (let y = Math.round(w.h * 0.5); y < w.h; y++) {
+      const c = w.cells[y * w.w + spx];
+      if (c === E.OIL) {
+        if (firstOilY < 0) firstOilY = y;
+        oilN++;
+      } else if (c !== E.EMPTY && c !== E.SAND) {
+        break;
+      }
+    }
+    if (firstOilY > 0 && oilN < 6) {
+      const j = (firstOilY - 1) * w.w + spx;
+      const above = w.cells[j];
+      if (above === E.EMPTY || above === E.SAND) w.set(j, E.OIL); // 顶开浮沙上渗
+    }
+  }
 }
 
 // 玻璃之城：木板街道地基 + 石框玻璃带高楼 + 玻璃塔 + 中央公园
@@ -509,6 +725,54 @@ function cityGen(w) {
   tree(w, px - 7, groundY - 1, 6, 3);
   tree(w, px + 7, groundY - 1, 6, 3);
   blob(w, px + 4, groundY - 3, 3, 2, E.PLANT);
+  // 天台花园：高楼顶上的绿植
+  for (const [fx, fw, fh] of lots) {
+    if (fh < 0.2) continue;
+    const gx0 = Math.round(W * fx) + 1;
+    const top = groundY - Math.round(H * fh) - 2;
+    put(w, gx0, top, E.PLANT);
+    put(w, gx0 + 1, top, E.PLANT);
+  }
+  // 金属天线：高楼避雷针（雷暴夜引雷入地）
+  for (const [fx, fw, fh] of lots) {
+    if (fh < 0.3) continue;
+    const sx = Math.round(W * fx) + Math.max(1, Math.round(W * fw) >> 1);
+    const top = groundY - Math.round(H * fh) - 2;
+    fillRect(w, sx, top - 3, sx, top, E.METAL);
+  }
+}
+
+// 玻璃之城事件：街雾 + 雷暴夜天线引雷（金属导电的活演示）
+const CITY_CYCLE = 2700; // 约 45 秒一轮
+function cityTick(w, frame) {
+  if (frame < 600) return;
+  const phase = frame % CITY_CYCLE;
+  // 街雾：贴街起烟
+  if (phase < 600 && frame % 18 === 0) {
+    const x = 1 + ((Math.random() * (w.w - 2)) | 0);
+    for (let y = 0; y < w.h; y++) {
+      const i = y * w.w + x;
+      if (w.cells[i] !== E.EMPTY) {
+        if (y > 0 && w.cells[i - w.w] === E.EMPTY) w.set(i - w.w, E.SMOKE, 50 + Math.random() * 50);
+        break;
+      }
+    }
+  }
+  // 雷暴夜：闪电找金属天线尖劈下（尖 = 上方两格空的金属），能量沿金属传导
+  if (phase === 900 || phase === 1300) {
+    const tips = [];
+    for (let i = w.w * 2; i < w.cells.length; i++) {
+      if (w.cells[i] === E.METAL && w.cells[i - w.w] === E.EMPTY && w.cells[i - 2 * w.w] === E.EMPTY) {
+        tips.push(i % w.w);
+      }
+    }
+    if (tips.length) {
+      lightningBolt(w, tips[(Math.random() * tips.length) | 0]);
+      if (typeof document !== 'undefined') {
+        document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '闪电劈上天线，电流沿金属奔流！', icon: 'electric' } }));
+      }
+    }
+  }
 }
 
 // 雪山：冰岩尖峰 + 45° 雪裙 + 冰湖 + 周期雪崩
@@ -810,12 +1074,12 @@ function snowMountainTick(w, frame) {
 // icon 为制图平涂场景缩略图 key，取值见 src/icons/index.js 的 biomeIcon()
 export const MAPS = [
   { id: 'blank', name: '空白画布', icon: 'blank', desc: '一张白纸，随心创作', gen: blank },
-  { id: 'forest', name: '青山林', icon: 'green-forest', desc: '密林环绕一株参天大树', gen: forest },
+  { id: 'forest', name: '青山林', icon: 'green-forest', desc: '密林参天大树，晨雾漫林，阵雨润泽', gen: forest, tick: forestTick },
   { id: 'archipelago', name: '群岛', icon: 'archipelago', desc: '沙岛礁石珊瑚，每分钟交替海啸，偶有雷暴', gen: archipelagoGen, tick: archipelagoTick },
   { id: 'volcano', name: '火山', icon: 'volcano', desc: '岩浆纹路布满山体，周期喷发', gen: volcanoGen, tick: volcanoTick },
-  { id: 'canyon', name: '峡谷', icon: 'canyon', desc: '峭壁之间一条河', gen: canyon },
-  { id: 'desert', name: '沙漠', icon: 'desert', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },
-  { id: 'city', name: '玻璃之城', icon: 'glass-city', desc: '高楼林立的方块都市', gen: cityGen },
+  { id: 'canyon', name: '峡谷', icon: 'canyon', desc: '峭壁夹河，悬壁栈道，偶有岩崩', gen: canyon, tick: canyonTick },
+  { id: 'desert', name: '沙漠', icon: 'desert', desc: '沙丘埋油绿洲，沙暴频起，油泉渗漏', gen: desert, tick: desertTick },
+  { id: 'city', name: '玻璃之城', icon: 'glass-city', desc: '高楼林立，雷暴夜天线引雷', gen: cityGen, tick: cityTick },
   { id: 'snow-mountain', name: '雪山', icon: 'snow-mountain', desc: '冰川入谷温泉冒汽，周期暴风雪与雪崩；山火雷鸣提前引发', gen: snowMountainGen, tick: snowMountainTick },
 ];
 

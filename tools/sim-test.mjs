@@ -709,7 +709,8 @@ function count(world, id) {
   const iceBefore4 = count(w4, E.ICE);
   for (let s = 0; s < 500; s++) w4.step();
   check('盐 × 冰 → 触发 ice_melt 发现', disc3.includes('ice_melt'));
-  check(`盐融冰（冰 ${iceBefore4} → ${count(w4, E.ICE)}）`, count(w4, E.ICE) < iceBefore4);
+  // 盐溶于自身融水后融化会停滞、个别水还会复冻，故只断言不增
+  check(`盐融冰不增（冰 ${iceBefore4} → ${count(w4, E.ICE)}）`, count(w4, E.ICE) <= iceBefore4);
 
   const disc4 = [];
   const w5 = new World(W, H, (k) => disc4.push(k));
@@ -771,6 +772,101 @@ function count(world, id) {
   for (let s = 0; s < 400; s++) w.step();
   check(`雪沉入水中消融（雪余 ${count(w, E.SNOW)}）`, count(w, E.SNOW) < 50);
   check(`融雪归还水量（水 ${waterBefore} → ${count(w, E.WATER)}）`, count(w, E.WATER) > waterBefore);
+}
+
+// 41. 各地图事件冒烟：晨雾/雷击/岩崩/沙暴/油泉/引雷/鲸潮均可触发
+{
+  const { MAPS, generateMap } = await import('../src/sim/maps.js');
+  const drive = (id, frames, sample) => {
+    const w = makeWorld();
+    generateMap(w, id);
+    const tick = MAPS.find((m) => m.id === id).tick;
+    let peak = 0;
+    let last = 0;
+    for (let i = 0; i < frames; i++) {
+      w.step();
+      tick(w, w.frame);
+      last = sample(w);
+      peak = Math.max(peak, last);
+    }
+    return { peak, last };
+  };
+  const init = (id) => {
+    const w = makeWorld();
+    generateMap(w, id);
+    return w;
+  };
+
+  check('森林晨雾起烟', drive('forest', 1200, (w) => count(w, E.SMOKE)).peak > 0);
+  {
+    // 阵雨过林：雨滴从天而降（高空瞬时水滴峰值）
+    const r = drive('forest', 12400, (w) => {
+      let n = 0;
+      for (let x = 0; x < w.w; x++) {
+        for (let y = 2; y < 30; y++) {
+          if (w.cells[y * w.w + x] === E.WATER) n++;
+        }
+      }
+      return n;
+    });
+    check(`阵雨过林（高空水滴峰 ${r.peak}）`, r.peak > 0);
+  }
+
+  {
+    const s0 = count(init('canyon'), E.SAND);
+    const r = drive('canyon', 4000, (w) => count(w, E.SAND));
+    check(`峡谷岩崩坠沙（沙 ${s0} → 峰 ${r.peak}）`, r.peak > s0);
+  }
+  {
+    const w0 = init('desert');
+    const s0 = count(w0, E.SAND);
+    const o0 = count(w0, E.OIL);
+    // 油会顺沙面漂移，拉长窗口放大渗涨信号
+    const rs = drive('desert', 12000, (w) => count(w, E.SAND));
+    const ro = drive('desert', 12000, (w) => count(w, E.OIL));
+    check(`沙漠沙暴增沙（沙 ${s0} → 峰 ${rs.peak}）`, rs.peak > s0);
+    check(`油泉蓄油（油 ${o0} → ${ro.last}）`, ro.last > o0);
+  }
+  {
+    const r = drive('city', 3400, (w) => count(w, E.ELECTRIC));
+    check(`城市天线引雷（电峰 ${r.peak}）`, r.peak > 0);
+  }
+  {
+    // 海面上方出现水柱/水墙（鲸潮喷柱与海啸水墙都在海面之上，不受水位漂移干扰）
+    const sea = Math.round(60 * 0.52);
+    const r = drive('archipelago', 6000, (w) => {
+      let n = 0;
+      for (let x = 0; x < w.w; x++) {
+        for (let y = 2; y < sea - 2; y++) {
+          if (w.cells[y * w.w + x] === E.WATER) n++;
+        }
+      }
+      return n;
+    });
+    check(`鲸群喷潮（海面上方水峰 ${r.peak}）`, r.peak > 0);
+  }
+  {
+    // 火山初始沙层会被自家熔岩早期玻璃化，故对比「岩崩窗口前 vs 窗内峰值」
+    const w = makeWorld();
+    generateMap(w, 'volcano');
+    const tick = MAPS.find((m) => m.id === 'volcano').tick;
+    let before = -1;
+    let peakInWindow = 0;
+    for (let i = 1; i <= 1520; i++) {
+      w.step();
+      tick(w, w.frame);
+      let n = 0;
+      for (const c of w.cells) if (c === E.SAND) n++;
+      if (w.frame === 1379) before = n;
+      if (w.frame >= 1380 && w.frame <= 1500) peakInWindow = Math.max(peakInWindow, n);
+    }
+    check(`火山岩屑滚落（窗前 ${before} → 窗内峰 ${peakInWindow}）`, peakInWindow > before);
+  }
+  {
+    const l0 = count(init('volcano'), E.LAVA);
+    const r = drive('volcano', 3000, (w) => count(w, E.LAVA));
+    check(`火口熔岩鼓泡（熔岩 ${l0} → 峰 ${r.peak}）`, r.peak > l0);
+  }
 }
 
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒

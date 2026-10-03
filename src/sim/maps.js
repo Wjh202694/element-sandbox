@@ -1,5 +1,7 @@
 import { E } from './elements.js';
 
+const rand = Math.random;
+
 // ===== 生成辅助 =====
 function put(w, x, y, id) {
   if (x >= 0 && x < w.w && y >= 0 && y < w.h) w.set(y * w.w + x, id);
@@ -598,11 +600,80 @@ function snowMountainGen(w) {
       if (w.cells[i] === E.STONE) w.set(i, E.SNOW);
     }
   }
-  // 坡脚雪堆与零星耐寒树（远离山体与湖）
-  blob(w, g.cx - g.skirtHalf - 5, base - 1, 4, 2, E.SNOW);
+  // ===== 雪原地貌：温泉 / 岩石露头 / 冰川舌 / 松林带（均在覆雪之后放置）=====
+  // 地热温泉：主峰左麓平地的岩窝热水池（石沿封口，池面与地表齐平），
+  // tick 持续冒蒸汽——蒸汽凝雨融雪，泉边四季不冻
+  const spaX = Math.max(4, g.cx - g.skirtHalf - 6);
+  if (spaX >= 4 && spaX < W - 4) {
+    const spaY0 = surf[spaX];
+    fillRect(w, spaX - 2, spaY0, spaX + 2, spaY0 + 2, E.EMPTY);
+    fillRect(w, spaX - 2, spaY0 + 3, spaX + 2, spaY0 + 3, E.STONE);
+    fillRect(w, spaX - 1, spaY0, spaX + 1, spaY0 + 2, E.WATER);
+    fillRect(w, spaX - 3, spaY0, spaX - 2, spaY0 + 2, E.STONE);
+    fillRect(w, spaX + 2, spaY0, spaX + 3, spaY0 + 2, E.STONE);
+  }
+  // 岩石露头：雪坡上探出的裸岩（覆雪之后放置，保持裸露）
+  for (let n = 0; n < 3; n++) {
+    const ad = Math.round(g.spikeHalf * 0.55 + rand() * (g.skirtHalf - g.spikeHalf) * 0.8);
+    const x = g.cx + ad * (rand() < 0.5 ? 1 : -1);
+    if (x < 1 || x >= W - 1) continue;
+    let y0 = 0;
+    while (y0 < H && w.cells[y0 * W + x] === E.EMPTY) y0++;
+    blob(w, x, y0 + 1, 1 + ((rand() * 2) | 0), 1, E.STONE);
+  }
+  // 冰川舌：沿右裙坡雪面铺蓝冰直下山脚（覆一道冰裂缝），终端堆冰碛
+  {
+    const startAd = Math.round(g.spikeHalf * 0.5);
+    const gapAd = Math.round(startAd + (g.skirtHalf - startAd) * 0.55);
+    for (let ad = startAd; ad <= g.skirtHalf; ad++) {
+      if (ad === gapAd) continue; // 冰裂缝
+      const x = g.cx + ad;
+      if (x < 1 || x >= W - 1) continue;
+      let y0 = 0;
+      while (y0 < H && w.cells[y0 * W + x] === E.EMPTY) y0++;
+      if (y0 >= H) continue;
+      for (let k = 0; k < 2 + (ad <= g.spikeHalf ? 1 : 0); k++) {
+        const i = (y0 + k) * W + x;
+        if (w.cells[i] !== E.EMPTY) w.set(i, E.ICE);
+      }
+      const j = y0 * W + x + 1;
+      if (rand() < 0.7 && w.cells[j] !== E.EMPTY) w.set(j, E.ICE);
+    }
+    const fx = Math.min(W - 3, g.cx + g.skirtHalf);
+    if (fx > 1) {
+      let fy = 0;
+      while (fy < H && w.cells[fy * W + fx] === E.EMPTY) fy++;
+      blob(w, fx, fy + 1, 3, 2, E.ICE);
+    }
+  }
+  // 坡脚雪堆（右侧一处即可，别压泉眼）
   blob(w, Math.min(W - 5, g.cx2 + g.halfW2 + 3), base - 1, 3, 2, E.SNOW);
-  tree(w, Math.round(W * 0.06), base + 1, 6, 3);
-  tree(w, Math.min(W - 3, Math.round(W * 0.97)), base + 1, 5, 2);
+  // 松林带：老树两株 + 低地补三株（几何定位避 开雪崩雪街），冠顶撒雪（覆雪只认石头，树冠雪手动点缀）
+  const crownSnow = [];
+  const plant = (x, gy, th, cr) => {
+    if (x < 2 || x > W - 3) return;
+    tree(w, x, gy, th, cr);
+    crownSnow.push({ x, gy, th, cr });
+  };
+  const groundAt = (x) => {
+    const s = surf[Math.max(0, Math.min(W - 1, x))];
+    return s && s < H ? s : base + 1;
+  };
+  if (Math.abs(Math.round(W * 0.06) - spaX) >= 6) plant(Math.round(W * 0.06), base + 1, 6, 3);
+  plant(Math.min(W - 3, Math.round(W * 0.97)), base + 1, 5, 2);
+  for (const px of [g.cx - g.skirtHalf - 7, Math.round((g.cx + g.skirtHalf + g.lakeX) / 2), g.cx2 + g.halfW2 + 7]) {
+    const x = Math.max(2, Math.min(W - 3, Math.round(px)));
+    if (Math.abs(x - spaX) < 6) continue; // 别把树种到泉眼上
+    if (crownSnow.some((c) => Math.abs(c.x - x) < 5)) continue;
+    plant(x, groundAt(x), 5 + (x % 3), 2 + (x % 2));
+  }
+  for (const c of crownSnow) {
+    const cy = c.gy - c.th - 2 - Math.max(1, Math.round(c.cr * 0.75));
+    for (let dx = -c.cr; dx <= c.cr; dx++) {
+      const i = cy * W + c.x + dx;
+      if (w.cells[i] === E.PLANT && rand() < 0.75) w.set(i, E.SNOW);
+    }
+  }
 }
 
 // 周期雪崩：前兆闷响 → 雪瀑沿 45° 裙坡自上而下扫过（坡度 ≤1，落雪站得住形成雪街）；
@@ -612,10 +683,50 @@ function snowMountainTick(w, frame) {
   const phase = frame % SNOW_CYCLE;
   const g = snowMountainGeometry(w);
   const inWindow = phase >= AVALANCHE_START && phase < AVALANCHE_START + AVALANCHE_LEN;
-  // 积雪期：主峰上空缓落新雪（陡坡上的会被粉末物理自然滑进裙坡）
-  if (!inWindow && phase < AVALANCHE_START - 300 && frame % 24 === 0) {
-    const x = g.cx + (((Math.random() - 0.5) * g.skirtHalf * 2.2) | 0);
-    if (x >= 0 && x < w.w && w.cells[x] === E.EMPTY) w.set(x, E.SNOW);
+  // 积雪期：常态缓落新雪；每逢单数轮中段刮暴风雪——雪墙横扫全图
+  const cycleN = Math.floor(frame / SNOW_CYCLE);
+  const blizzard = cycleN % 2 === 1 && phase >= 900 && phase < 1500;
+  if (!inWindow && phase < AVALANCHE_START - 300) {
+    if (blizzard) {
+      if (phase === 900) {
+        w.discover('blizzard');
+        if (typeof document !== 'undefined') {
+          document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '暴风雪横扫群山！', icon: 'snow' } }));
+        }
+      }
+      if (frame % 8 === 0) {
+        const x = Math.round(((phase - 900) / 600) * (w.w - 12)) + 6 + (((Math.random() - 0.5) * 12) | 0);
+        if (x >= 0 && x < w.w && w.cells[x] === E.EMPTY) w.set(x, E.SNOW);
+      }
+    } else if (frame % 24 === 0) {
+      const x = g.cx + (((Math.random() - 0.5) * g.skirtHalf * 2.2) | 0);
+      if (x >= 0 && x < w.w && w.cells[x] === E.EMPTY) w.set(x, E.SNOW);
+    }
+  }
+  // 地热温泉：泉眼持续冒蒸汽——蒸汽凝雨融雪，泉边四季不冻（泉眼被掩埋/拆改则罢工）
+  if (!inWindow && frame % 26 === 0) {
+    const spaX = Math.max(4, g.cx - g.skirtHalf - 6);
+    if (spaX < w.w - 4) {
+      for (let y = 0; y < w.h; y++) {
+        const i = y * w.w + spaX;
+        const c = w.cells[i];
+        if (c === E.WATER) {
+          // 从水面上方最近的空格冒汽（雪盖泉眼时从雪顶冒出）。
+          // 主体用烟：消散不留水，否则蒸汽凝雨会在低地无限积水成灾；
+          // 每六缕夹一缕真蒸汽——凝雨融雪，泉边的"四季不冻"点缀
+          let yy = y - 1;
+          while (yy >= 0 && w.cells[yy * w.w + spaX] !== E.EMPTY) yy--;
+          if (yy >= 0) {
+            // 真蒸汽每 600 帧一缕：凝雨有净水量，太频繁会在低地积出连通水膜，
+            // 让植物沿水膜蔓延吞掉湖（实测教训）；观感主要由上面的无水烟承担
+            if (frame % 600 === 0) w.set(yy * w.w + spaX, E.STEAM, 130 + rand() * 80);
+            else w.set(yy * w.w + spaX, E.SMOKE, 60 + rand() * 60);
+          }
+          break;
+        }
+        if (c !== E.EMPTY && c !== E.SNOW && c !== E.STONE && c !== E.ICE && c !== E.SMOKE && c !== E.STEAM) break;
+      }
+    }
   }
   // 前兆：山体闷响
   if (phase === AVALANCHE_START - 300 && typeof document !== 'undefined') {
@@ -644,6 +755,29 @@ function snowMountainTick(w, frame) {
       if (typeof document !== 'undefined') {
         document.dispatchEvent(new CustomEvent('sb-map-event', { detail: { text: '轰隆——雪崩被引发了！', icon: 'snow' } }));
       }
+    }
+  }
+  // 低地残水速冻：溢出湖盆的融水落在冻土上即冻成薄冰（45 帧一扫）。
+  // 不留连片水膜——否则植物沿水膜蔓延吞湖成沼（实测教训）；湖盆与温泉池豁免
+  if (frame % 45 === 0) {
+    const lx0 = Math.max(1, g.lakeX - (g.lakeW >> 1) - 2);
+    const lx1 = Math.min(w.w - 2, lx0 + g.lakeW + 4);
+    const spaL = Math.max(4, g.cx - g.skirtHalf - 6);
+    for (let y = Math.round(w.h * 0.6); y < w.h; y++) {
+      for (let x = 1; x < w.w - 1; x++) {
+        if (x >= lx0 && x <= lx1) continue;
+        if (Math.abs(x - spaL) <= 3 && y > Math.round(w.h * 0.8)) continue;
+        const i = y * w.w + x;
+        if (w.cells[i] === E.WATER) w.set(i, E.ICE);
+      }
+    }
+  }
+  // 融水排走：边界积水视为流出手图（暴风雪融水持续入湖，没有出口迟早淹山成沼）
+  if (frame % 30 === 0) {
+    for (let y = 0; y < w.h; y++) {
+      if (w.cells[y * w.w] === E.WATER) w.set(y * w.w, E.EMPTY);
+      const xr = y * w.w + w.w - 1;
+      if (w.cells[xr] === E.WATER) w.set(xr, E.EMPTY);
     }
   }
   const pouring = inWindow || frame < (w.avalancheUntil || 0);
@@ -682,7 +816,7 @@ export const MAPS = [
   { id: 'canyon', name: '峡谷', icon: 'canyon', desc: '峭壁之间一条河', gen: canyon },
   { id: 'desert', name: '沙漠', icon: 'desert', desc: '沙丘下埋着石油，角落有绿洲', gen: desert },
   { id: 'city', name: '玻璃之城', icon: 'glass-city', desc: '高楼林立的方块都市', gen: cityGen },
-  { id: 'snow-mountain', name: '雪山', icon: 'snow-mountain', desc: '双峰雪岭夹冰湖，周期雪崩；山火雷鸣会提前引发', gen: snowMountainGen, tick: snowMountainTick },
+  { id: 'snow-mountain', name: '雪山', icon: 'snow-mountain', desc: '冰川入谷温泉冒汽，周期暴风雪与雪崩；山火雷鸣提前引发', gen: snowMountainGen, tick: snowMountainTick },
 ];
 
 export function generateMap(world, id) {

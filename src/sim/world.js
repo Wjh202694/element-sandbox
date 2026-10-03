@@ -227,8 +227,12 @@ export class World {
         return;
       }
     }
-    // 邻冰：静水缓慢晶化（结冰从冰缘向水体蔓延，整湖慢慢冻实）
-    if (rand() < 0.004) {
+    // 邻冰：仅「露天」表层静水结冰（真实湖面封冻、深层不冻——冰下湖水永存）。
+    // 无此限制冰晶会顺着连通水膜无限蔓延，把全图水体冻毙
+    if (
+      rand() < 0.006 &&
+      (y === 0 || this.cells[i - this.w] === E.EMPTY || this.cells[i - this.w] === E.SNOW)
+    ) {
       for (let k = 0; k < 4; k++) {
         const nx = x + DX4[k];
         const ny = y + DY4[k];

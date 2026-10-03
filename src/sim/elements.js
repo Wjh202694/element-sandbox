@@ -47,7 +47,7 @@ export const DENSITY = {
   [E.GUNPOWDER]: 5,
   [E.SALT]: 5,
   [E.SOIL]: 5,
-  [E.SNOW]: 3,
+  [E.SNOW]: 3.5, // 比水重：落水下沉、四面环水快速融掉，湖面不被积雪填埋
   [E.H2]: 0.4,
 };
 

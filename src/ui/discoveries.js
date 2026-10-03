@@ -40,6 +40,7 @@ export const DISCOVERIES = [
   { key: 'freeze', icon: 'petrify', name: '结冰', formula: '水 × 冰', desc: '静水贴冰，晶化缓缓蔓延' },
   { key: 'ice_melt', icon: 'snow_melt', name: '融冰', formula: '冰 × 高温/盐/电', desc: '坚冰逢暖，消融成流' },
   { key: 'avalanche', icon: 'rain', name: '雪崩', formula: '震动 × 积雪', desc: '山火雷鸣震落积雪，一泻千里' },
+  { key: 'blizzard', icon: 'rain', name: '暴风雪', formula: '风 × 降雪', desc: '狂风卷雪，天地一色' },
 ];
 
 let known = loadDiscovered();

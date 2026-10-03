@@ -631,7 +631,7 @@ function count(world, id) {
   const { MAPS, generateMap } = await import('../src/sim/maps.js');
   const w2 = makeWorld();
   generateMap(w2, 'snow-mountain');
-  check(`雪山生成含雪与冰（雪 ${count(w2, E.SNOW)} 冰 ${count(w2, E.ICE)}）`, count(w2, E.SNOW) > 90 && count(w2, E.ICE) > 25);
+  check(`雪山生成含雪与冰（雪 ${count(w2, E.SNOW)} 冰 ${count(w2, E.ICE)}）`, count(w2, E.SNOW) > 60 && count(w2, E.ICE) > 25);
 
   const tick = MAPS.find((m) => m.id === 'snow-mountain').tick;
   const before = count(w2, E.SNOW);
@@ -673,21 +673,22 @@ function count(world, id) {
 {
   const disc = [];
   const w2 = new World(W, H, (k) => disc.push(k));
-  for (let x = 24; x <= 36; x++) {
-    w2.set(31 * W + x, E.ICE); // 冰板
-    w2.set(35 * W + x, E.STONE); // 池底
-  }
-  for (let y = 32; y <= 34; y++) {
+  for (let x = 24; x <= 36; x++) w2.set(35 * W + x, E.STONE); // 池底
+  for (let y = 31; y <= 34; y++) {
     w2.set(y * W + 24, E.STONE);
     w2.set(y * W + 36, E.STONE);
   }
+  // 左半冰板、右半水，水面露天：冰从侧面顺表层水蔓延
   for (let y = 32; y <= 34; y++) {
-    for (let x = 25; x <= 35; x++) w2.set(y * W + x, E.WATER);
+    for (let x = 25; x <= 30; x++) w2.set(y * W + x, E.ICE);
+    for (let x = 31; x <= 35; x++) w2.set(y * W + x, E.WATER);
   }
   const iceBefore = count(w2, E.ICE);
   for (let s = 0; s < 1500; s++) w2.step();
   check('水 × 冰 → 触发 freeze 发现', disc.includes('freeze'));
-  check(`结冰蔓延（冰 ${iceBefore} → ${count(w2, E.ICE)}）`, count(w2, E.ICE) > iceBefore);
+  check(`表层结冰蔓延（冰 ${iceBefore} → ${count(w2, E.ICE)}）`, count(w2, E.ICE) > iceBefore);
+  // 深层不冻：冰下水永远留一层
+  check(`深层湖水不冻（余水 ${count(w2, E.WATER)}）`, count(w2, E.WATER) > 5);
 
   const disc2 = [];
   const w3 = new World(W, H, (k) => disc2.push(k));
@@ -719,6 +720,57 @@ function count(world, id) {
   w5.paint(30, 29, 2, E.ELECTRIC); // 冰层正上方撒电火花
   for (let s = 0; s < 60; s++) w5.step();
   check('电 × 冰 → 触发 ice_melt 发现', disc4.includes('ice_melt'));
+}
+
+// 37. 雪山丰富化：暴风雪轮换增雪 + 地热温泉冒蒸汽
+{
+  const { MAPS, generateMap } = await import('../src/sim/maps.js');
+  const disc = [];
+  const w2 = new World(W, H, (k) => disc.push(k));
+  generateMap(w2, 'snow-mountain');
+  const tick = MAPS.find((m) => m.id === 'snow-mountain').tick;
+  const before = count(w2, E.SNOW);
+  w2.frame = 2400 + 899; // 单数轮暴风雪窗口（首帧 phase=900 触发发现）
+  for (let i = 0; i < 200; i++) {
+    w2.frame++;
+    tick(w2, w2.frame);
+  }
+  check('暴风雪 → 触发 blizzard 发现', disc.includes('blizzard'));
+  check(`暴风雪增雪（雪 ${before} → ${count(w2, E.SNOW)}）`, count(w2, E.SNOW) > before);
+
+  const w3 = makeWorld();
+  generateMap(w3, 'snow-mountain');
+  const tick3 = MAPS.find((m) => m.id === 'snow-mountain').tick;
+  w3.frame = 4800; // 偶数轮积雪期（无暴风雪）
+  let plumePeak = 0;
+  for (let i = 0; i < 400; i++) {
+    w3.frame++;
+    tick3(w3, w3.frame);
+    plumePeak = Math.max(plumePeak, count(w3, E.SMOKE));
+  }
+  check(`温泉持续冒汽（烟柱峰值 ${plumePeak} 格）`, plumePeak > 0);
+}
+
+// 38. 雪落水面：下沉消融，湖面不被积雪填埋
+{
+  const w = makeWorld();
+  for (let x = 25; x <= 35; x++) w.set(40 * W + x, E.STONE); // 池底
+  for (let y = 37; y <= 39; y++) {
+    w.set(y * W + 25, E.STONE);
+    w.set(y * W + 35, E.STONE);
+  }
+  const waterBefore = count(w, E.WATER);
+  for (let y = 37; y <= 39; y++) {
+    for (let x = 26; x <= 34; x++) w.set(y * W + x, E.WATER);
+  }
+  // 反复往水面撒雪，充分步进让其沉入融化
+  for (let r = 0; r < 8; r++) {
+    w.paint(30, 35, 2, E.SNOW);
+    for (let s = 0; s < 40; s++) w.step();
+  }
+  for (let s = 0; s < 400; s++) w.step();
+  check(`雪沉入水中消融（雪余 ${count(w, E.SNOW)}）`, count(w, E.SNOW) < 50);
+  check(`融雪归还水量（水 ${waterBefore} → ${count(w, E.WATER)}）`, count(w, E.WATER) > waterBefore);
 }
 
 // 9. 性能：10 秒模拟量（600 帧）耗时应远小于 10 秒

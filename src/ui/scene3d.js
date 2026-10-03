@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { state } from './store.js';
 import { biomeIcon, systemIcon } from '../icons/index.js';
 import { E, EL } from '../sim/elements.js';
-import { seaAmbientStart, seaAmbientStop, geyserHiss, thunder, volcanoRumble, waveCrash } from './sound.js';
+import { seaAmbientStart, seaAmbientStop, geyserHiss, thunder, volcanoRumble, waveCrash, windHowl } from './sound.js';
 
 function hexRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -638,6 +638,7 @@ export function create3DScene(world, host, renderer2d) {
   function liveStart() {
     mode = 'live';
     hideIslandFx(); // 切走前收起火山岛 FX（余烬/汽柱别悬在实景同步里）
+    hideSnowFx();
     disposeIslandFauna();
     if (solidMesh) {
       scene.remove(solidMesh);
@@ -719,6 +720,7 @@ export function create3DScene(world, host, renderer2d) {
     else if (mode === 'live') disposeLive();
     if (target === 'island') enterIsland();
     else if (target === 'sea') seaStart();
+    else if (target === 'snow') enterSnow();
     else liveStart();
   }
 
@@ -1187,6 +1189,7 @@ export function create3DScene(world, host, renderer2d) {
   function seaStart() {
     mode = 'sea';
     hideIslandFx(); // 切走前收起火山岛 FX
+    hideSnowFx();
     disposeTerrainMeshes();
     disposeIslandFauna();
     liveBase.visible = false;
@@ -1227,6 +1230,7 @@ export function create3DScene(world, host, renderer2d) {
 
   function enterIsland() {
     mode = 'island';
+    hideSnowFx(); // 切走雪山时收起飘雪与雪崩
     items = islandItems;
     maxH = islandMaxH;
     disc.visible = true;
@@ -1933,12 +1937,324 @@ export function create3DScene(world, host, renderer2d) {
     }
   }
 
+  // ===== 雪山模式：参考真实雪山图景的体素观赏对象 =====
+  // 角峰（平顶雪台+冰岩尖峰）+ 45° 雪裙 + 冰川舌 + 冻湖 + 雾凇松林 + 温泉；
+  // 与 2D 雪山 tick 同一时钟（SNOW_CYCLE=2400）：雪崩窗口/玩家引发（avalancheUntil）/暴风雪全同步
+  let snowItems = null;
+  let snowMeta = null;
+  let snowMaxH = 1;
+  let snowFx = null;
+  const SNOW_CYCLE = 2400;
+
+  function buildSnowItems() {
+    const arr = [];
+    const cols = new Map();
+    const key = (i, j) => i * 1000 + j;
+    const C_SNOW = [238, 244, 252];
+    const C_ICE = [188, 214, 236];
+    const C_PINE = [46, 88, 58];
+    const C_SNOWCAP = [255, 255, 255];
+    const base = 3; // 雪原地面高
+    const spikeH = Math.round(PEAK * 0.42);
+    const skirtH = Math.round(PEAK * 0.42);
+    const spikeHalf = Math.max(4, Math.round(R * 0.15));
+    const skirtHalf = spikeHalf + skirtH; // 45° 裙坡
+    const lakeA = rand() * Math.PI * 2;
+    // 地形高度场：低地雪原 + 平顶雪台 + 冰岩尖峰 + 45° 雪裙
+    for (let i = 0; i < S; i++) {
+      for (let j = 0; j < S; j++) {
+        const dx = i - R;
+        const dz = j - R;
+        const ad = Math.sqrt(dx * dx + dz * dz);
+        if (ad > R) continue;
+        let h = base + Math.round(Math.sin(i * 0.07) + Math.sin(j * 0.11 + 1));
+        let cap = C_SNOW;
+        if (ad <= spikeHalf * 0.3) {
+          h = base + skirtH + spikeH; // 平顶雪台
+          cap = C_SNOWCAP;
+        } else if (ad <= spikeHalf) {
+          h = base + Math.round(skirtH + spikeH * 0.15 + ((spikeHalf - ad) / (spikeHalf * 0.7)) * spikeH * 0.85);
+          cap = C_ICE; // 冰岩尖峰
+        } else if (ad <= skirtHalf) {
+          h = base + Math.round(skirtH + spikeH * 0.15 - (ad - spikeHalf)); // 45° 裙坡
+        }
+        if (h < 1) h = 1;
+        cols.set(key(i, j), { h, cap });
+      }
+    }
+    // 冻湖：山脚一侧的圆湖，冰盖封面，中央一道未冻裂缝（发光水面）
+    const lakeCx = Math.round(R + Math.cos(lakeA) * R * 0.42);
+    const lakeCz = Math.round(R + Math.sin(lakeA) * R * 0.42);
+    const lakeR = Math.max(4, Math.round(R * 0.14));
+    for (let dx = -lakeR; dx <= lakeR; dx++) {
+      for (let dz = -lakeR; dz <= lakeR; dz++) {
+        if ((dx / lakeR) ** 2 + (dz / lakeR) ** 2 > 1) continue;
+        const c = cols.get(key(lakeCx + dx, lakeCz + dz));
+        if (c && c.h <= base + 3) {
+          c.h = base;
+          c.cap = C_ICE;
+          c.lake = true;
+        }
+      }
+    }
+    // 冰川舌：自雪台沿湖向铺蓝冰直抵湖畔，中段留一道冰裂缝
+    const startAd = Math.round(spikeHalf * 0.2);
+    const gapCol = lakeCx + ((rand() * 3) | 0) - 1;
+    for (let t = 0; t <= 1; t += 0.02) {
+      const gx = Math.round(R + (lakeCx - R) * t);
+      const gz = Math.round(R + (lakeCz - R) * t);
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oz = -1; oz <= 1; oz++) {
+          const c = cols.get(key(gx + ox, gz + oz));
+          if (c && !c.lake && gx + ox !== gapCol && c.h > base + 1) c.cap = C_ICE;
+        }
+      }
+    }
+    // 地热温泉：低地发光水塘（蒸汽 FX 锚点）
+    const springA = lakeA + Math.PI * 0.75;
+    const springX = Math.round(R + Math.cos(springA) * R * 0.55);
+    const springZ = Math.round(R + Math.sin(springA) * R * 0.55);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dz = -1; dz <= 1; dz++) {
+        const c = cols.get(key(springX + dx, springZ + dz));
+        if (c && !c.lake) {
+          c.h = 4;
+          c.cap = C_WATER;
+          c.spring = true;
+        }
+      }
+    }
+    // 组装实例：石基 + 雪身 + 顶盖
+    for (const [k, c] of cols) {
+      const i = Math.floor(k / 1000);
+      const j = k % 1000;
+      if (c.h > 3) {
+        arr.push({ x: i, z: j, y0: 0, h: 2, sx: 1, sz: 1, rgb: C_STONE, glow: false });
+        arr.push({ x: i, z: j, y0: 2, h: c.h - 3, sx: 1, sz: 1, rgb: C_SNOW, glow: false });
+        arr.push({ x: i, z: j, y0: c.h - 1, h: 1, sx: 1, sz: 1, rgb: c.cap, glow: c.spring });
+      } else {
+        arr.push({ x: i, z: j, y0: 0, h: c.h, sx: 1, sz: 1, rgb: c.cap, glow: c.spring });
+      }
+    }
+    // 雾凇松林：低地错落的积雪塔冠松
+    const pines = [];
+    for (let tries = 0; tries < 400 && pines.length < 26; tries++) {
+      const a = rand() * Math.PI * 2;
+      const rr = skirtHalf + 3 + rand() * Math.max(3, R * 0.95 - skirtHalf - 4);
+      const i = Math.round(R + Math.cos(a) * rr);
+      const j = Math.round(R + Math.sin(a) * rr);
+      const c = cols.get(key(i, j));
+      if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (pines.some((p) => Math.abs(p[0] - i) < 4 && Math.abs(p[1] - j) < 4)) continue;
+      pines.push([i, j]);
+      const trunk = 2 + ((rand() * 2) | 0);
+      arr.push({ x: i, z: j, y0: c.h, h: trunk, sx: 0.5, sz: 0.5, rgb: C_WOOD, glow: false });
+      for (let l = 0; l < 3; l++) {
+        arr.push({
+          x: i, z: j, y0: c.h + trunk + l * 1.5, h: 1.3,
+          sx: 2.1 - l * 0.6, sz: 2.1 - l * 0.6, rgb: C_PINE, glow: false,
+        });
+      }
+      arr.push({ x: i, z: j, y0: c.h + trunk + 4.5, h: 0.5, sx: 0.8, sz: 0.8, rgb: C_SNOWCAP, glow: false });
+    }
+    // 岩石露头：雪坡上探出的裸岩
+    for (let n = 0; n < 6; n++) {
+      const a = rand() * Math.PI * 2;
+      const ad = spikeHalf * 0.6 + rand() * (skirtHalf - spikeHalf) * 0.8;
+      const i = Math.round(R + Math.cos(a) * ad);
+      const j = Math.round(R + Math.sin(a) * ad);
+      const c = cols.get(key(i, j));
+      if (!c || c.lake || c.spring) continue;
+      arr.push({ x: i, z: j, y0: c.h, h: 0.7, sx: 0.9, sz: 0.9, rgb: C_STONE, glow: false });
+    }
+    const meta = {
+      spikeHalf,
+      skirtH,
+      base,
+      topY: base + skirtH + spikeH,
+      spring: { x: springX - R + 0.5, y: 4, z: springZ - R + 0.5 },
+      az0: rand() * Math.PI * 2,
+    };
+    return { arr, meta };
+  }
+
+  function enterSnow() {
+    mode = 'snow';
+    hideIslandFx();
+    if (!snowItems) {
+      const built = buildSnowItems();
+      snowItems = built.arr;
+      snowMeta = built.meta;
+    }
+    items = snowItems;
+    maxH = 1;
+    for (const it of items) maxH = Math.max(maxH, it.y0 + it.h);
+    snowMaxH = maxH;
+    disc.visible = true;
+    building = true; // 重播自搭建入场
+    buildStart = performance.now();
+    rebuild(true);
+    camera.position.set(0, maxH * 2.3 + S * 0.28, S * 0.6);
+    controls.target.set(0, maxH * 0.2, 0);
+    controls.minDistance = maxH * 0.5;
+    controls.maxDistance = S * 2.4;
+    scene.fog.near = S * 0.9;
+    scene.fog.far = S * 2.6;
+    setModeLabel();
+  }
+
+  function ensureSnowFx() {
+    if (snowFx) return;
+    const mats = {
+      flake: new THREE.MeshBasicMaterial({ color: 0xf4f8ff }),
+      pour: new THREE.MeshBasicMaterial({ color: 0xeef4fb }),
+      steam: new THREE.MeshLambertMaterial({ color: 0xb9c4ce, transparent: true, opacity: 0.4 }),
+    };
+    const dummy = new THREE.Object3D();
+    // 风吹雪：满天飘雪粒子（暴风雪时加速横扫）
+    const flakes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mats.flake, 90);
+    flakes.frustumCulled = false;
+    const fl = [];
+    for (let n = 0; n < 90; n++) {
+      fl.push({
+        x: (rand() - 0.5) * S * 1.1,
+        z: (rand() - 0.5) * S * 1.1,
+        y: rand() * (snowMeta.topY + 20),
+        v: 0.06 + rand() * 0.1,
+        sway: rand() * Math.PI * 2,
+      });
+    }
+    scene.add(flakes);
+    // 雪崩雪瀑：24 团雪块在雪崩前锋循环翻滚
+    const pour = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), mats.pour, 24);
+    pour.frustumCulled = false;
+    scene.add(pour);
+    // 温泉蒸汽
+    const steam = [];
+    for (let n = 0; n < 4; n++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 1.4), mats.steam);
+      m.visible = false;
+      scene.add(m);
+      steam.push({ mesh: m, born: -1 });
+    }
+    snowFx = { mats, flakes, fl, pour, dummy, steam, blizzardNow: false, avalancheNow: false };
+  }
+
+  function hideSnowFx() {
+    if (snowFx) {
+      snowFx.flakes.visible = false;
+      snowFx.pour.visible = false;
+      for (const s of snowFx.steam) s.mesh.visible = false;
+    }
+    windHowl(0);
+    volcanoRumble(0);
+  }
+
+  function tickSnowFx(now) {
+    const active = mode === 'snow' && !building;
+    if (!active) {
+      hideSnowFx();
+      return;
+    }
+    ensureSnowFx();
+    const m = snowMeta;
+    snowFx.flakes.visible = true;
+    snowFx.pour.visible = true;
+    const t = now / 1000;
+    const phase = world.frame % SNOW_CYCLE;
+    const cycleN = Math.floor(world.frame / SNOW_CYCLE);
+    const blizzard = cycleN % 2 === 1 && phase >= 900 && phase < 1500;
+    snowFx.blizzardNow = blizzard;
+    // 飘雪：常态徐落，暴风雪时快而斜
+    const speed = blizzard ? 3 : 1;
+    for (let n = 0; n < snowFx.fl.length; n++) {
+      const f = snowFx.fl[n];
+      f.y -= f.v * speed;
+      f.x += (blizzard ? 0.35 : 0.05) + Math.sin(t + f.sway) * 0.1;
+      if (f.y < 0) {
+        f.y = m.topY + 15 + rand() * 10;
+        f.x = (rand() - 0.5) * S * 1.1;
+        f.z = (rand() - 0.5) * S * 1.1;
+      }
+      if (f.x > S * 0.6) f.x = -S * 0.6;
+      snowFx.dummy.position.set(f.x, f.y, f.z);
+      snowFx.dummy.rotation.set(t + f.sway, 0, 0);
+      snowFx.dummy.scale.setScalar(blizzard ? 1.5 : 1);
+      snowFx.dummy.updateMatrix();
+      snowFx.flakes.setMatrixAt(n, snowFx.dummy.matrix);
+    }
+    snowFx.flakes.instanceMatrix.needsUpdate = true;
+    // 雪崩：与 2D 雪山 tick 同帧——周期窗口或玩家引发（avalancheUntil）都倒雪
+    const inWindow = phase >= 2100 && phase < 2200;
+    const triggered = world.frame < (world.avalancheUntil || 0) && world.avalancheUntil > 0;
+    const snowFx$ = snowFx;
+    snowFx$.avalancheNow = inWindow || triggered;
+    if (snowFx$.avalancheNow) {
+      const elapsed = inWindow
+        ? phase - 2100
+        : 100 - ((world.avalancheUntil || 0) - world.frame);
+      const p = 0.1 + 0.85 * Math.max(0, Math.min(1, elapsed / 100));
+      const side = (cycleN % 2 === 0) ? 1 : -1;
+      const az = m.az0 + (side === 1 ? 0 : Math.PI);
+      const d = m.spikeHalf + p * m.skirtH;
+      const gy = m.base + m.skirtH * (1 - p);
+      for (let n = 0; n < 24; n++) {
+        const jx = Math.cos(az) * d + (((rand() - 0.5) * 6) | 0);
+        const jz = Math.sin(az) * d + (((rand() - 0.5) * 6) | 0);
+        const jy = gy + 1 + (n % 5) * 0.8 + Math.sin(t * 3 + n) * 0.4;
+        snowFx.dummy.position.set(jx, jy, jz);
+        snowFx.dummy.rotation.set(t * 2 + n, n, 0);
+        snowFx.dummy.scale.setScalar(0.6 + (n % 4) * 0.25);
+        snowFx.dummy.updateMatrix();
+        snowFx.pour.setMatrixAt(n, snowFx.dummy.matrix);
+      }
+      snowFx.pour.instanceMatrix.needsUpdate = true;
+    }
+    volcanoRumble(snowFx$.avalancheNow ? 0.7 : 0.1);
+    // 温泉蒸汽：泉面缓缓升腾
+    for (const s of snowFx.steam) {
+      if (s.born < 0) {
+        if (rand() > 0.03) continue;
+        s.born = now;
+        s.mesh.position.set(m.spring.x + (rand() - 0.5) * 1.6, m.spring.y + 1, m.spring.z + (rand() - 0.5) * 1.6);
+        s.mesh.visible = true;
+      }
+      const q = (now - s.born) / 2400;
+      if (q >= 1) {
+        s.born = -1;
+        s.mesh.visible = false;
+        continue;
+      }
+      s.mesh.position.y += 0.06;
+      s.mesh.rotation.y += 0.01;
+      s.mesh.material.opacity = 0.4 * (1 - q);
+    }
+    windHowl(blizzard ? 0.5 : 0.06);
+  }
+
+  function disposeSnowFx() {
+    if (!snowFx) return;
+    scene.remove(snowFx.flakes);
+    snowFx.flakes.geometry.dispose();
+    scene.remove(snowFx.pour);
+    snowFx.pour.geometry.dispose();
+    for (const s of snowFx.steam) {
+      scene.remove(s.mesh);
+      s.mesh.geometry.dispose();
+    }
+    for (const k in snowFx.mats) snowFx.mats[k].dispose();
+    snowFx = null;
+  }
+
   (function loop() {
     raf = requestAnimationFrame(loop);
     tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
-    else {
+    else if (mode === 'snow') {
+      tickBuild();
+      tickSnowFx(performance.now());
+    } else {
       tickBuild();
       tickVolcanoFx();
       tickVentFx(performance.now());
@@ -1966,6 +2282,7 @@ export function create3DScene(world, host, renderer2d) {
   const menuItems = [
     ['island', 'volcano', '火山岛'],
     ['sea', 'archipelago', '海岛'],
+    ['snow', 'snow-mountain', '雪山'],
     ['live', 'mirror', '实景同步'],
   ].map(([key, ico, label]) => {
     const b = document.createElement('button');
@@ -2010,7 +2327,10 @@ export function create3DScene(world, host, renderer2d) {
     tickSkyLight();
     if (mode === 'live') tickLive();
     else if (mode === 'sea') tickSea();
-    else {
+    else if (mode === 'snow') {
+      tickBuild();
+      tickSnowFx(performance.now());
+    } else {
       tickBuild();
       tickVolcanoFx();
       tickVentFx(performance.now());
@@ -2058,6 +2378,10 @@ export function create3DScene(world, host, renderer2d) {
         ? { eruption: craterFx.erupting, phase: craterFx.phase }
         : null,
     vents: mode === 'island' && ventFx ? { puffs: ventFx.puffs.length, geyser: !!ventFx.geyser } : null,
+    snow:
+      mode === 'snow' && snowFx
+        ? { blizzard: snowFx.blizzardNow, avalanche: snowFx.avalancheNow }
+        : null,
   });
 
   return function dispose() {
@@ -2070,6 +2394,7 @@ export function create3DScene(world, host, renderer2d) {
     volcanoRumble(0);
     disposeCraterFx();
     disposeVentFx();
+    disposeSnowFx();
     disposeIslandFauna();
     document.removeEventListener('click', closeMenu);
     if (live) {

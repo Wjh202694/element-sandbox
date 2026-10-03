@@ -309,6 +309,50 @@ export function geyserHiss(level) {
   hiss.gain.gain.setTargetAtTime(level * 0.2, ctx.currentTime, 0.25);
 }
 
+// ===== 风雪呼啸：带通噪声 + 慢 LFO 起伏，音量由 3D 侧按风雪强度调制 =====
+let wind = null; // { src, gain, lfo }
+
+export function windHowl(level) {
+  if (!enabled || level <= 0) {
+    if (wind && ctx) {
+      const { src, gain, lfo } = wind;
+      wind = null;
+      gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.4);
+      setTimeout(() => {
+        try {
+          src.stop();
+          lfo.stop();
+        } catch {
+          /* 已停止 */
+        }
+      }, 1200);
+    }
+    return;
+  }
+  if (!ensureCtx()) return;
+  if (!wind) {
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 420;
+    filter.Q.value = 0.5;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.25;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.04;
+    lfo.connect(lfoGain).connect(gain.gain);
+    src.connect(filter).connect(gain).connect(master);
+    src.start();
+    lfo.start();
+    wind = { src, gain, lfo };
+  }
+  wind.gain.gain.setTargetAtTime(level * 0.22, ctx.currentTime, 0.5);
+}
+
 export function initSound() {
   const btn = document.getElementById('btn-sound');
   if (!btn) return;

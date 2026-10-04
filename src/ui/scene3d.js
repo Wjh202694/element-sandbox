@@ -2037,9 +2037,9 @@ export function create3DScene(world, host, renderer2d) {
     const C_PINE = [46, 88, 58];
     const C_SNOWCAP = [255, 255, 255];
     const base = 3; // 雪原地面高
-    const spikeH = Math.round(PEAK * 0.42);
-    const skirtH = Math.round(PEAK * 0.42);
-    const spikeHalf = Math.max(4, Math.round(R * 0.15));
+    const spikeH = Math.round(PEAK * 0.5);
+    const skirtH = Math.round(PEAK * 0.46);
+    const spikeHalf = Math.max(5, Math.round(R * 0.17));
     const skirtHalf = spikeHalf + skirtH; // 45° 裙坡
     const lakeA = rand() * Math.PI * 2;
     // 地形高度场：低地雪原 + 平顶雪台 + 冰岩尖峰 + 45° 雪裙
@@ -2106,11 +2106,11 @@ export function create3DScene(world, host, renderer2d) {
         }
       }
     }
-    // 三座次峰：高低不同、形状各异（尖锥/圆顶/方桌），与主峰不相连（低地雪原隔开）
+    // 三座次峰：高低不同、形状各异（尖锥/圆顶/方桌），拉远距离与主峰不相连（低地雪原隔开）
     const secPeaks = [
-      { az: lakeA + 0.9, dist: R * 0.62, rad: Math.max(5, Math.round(R * 0.1)), h: Math.round(PEAK * 0.58), shape: 'cone' },
-      { az: lakeA + 2.6, dist: R * 0.56, rad: Math.max(6, Math.round(R * 0.15)), h: Math.round(PEAK * 0.34), shape: 'dome' },
-      { az: lakeA - 1.4, dist: R * 0.6, rad: Math.max(5, Math.round(R * 0.09)), h: Math.round(PEAK * 0.46), shape: 'mesa' },
+      { az: lakeA + 0.9, dist: R * 0.74, rad: Math.max(7, Math.round(R * 0.14)), h: Math.round(PEAK * 0.62), shape: 'cone' },
+      { az: lakeA + 2.6, dist: R * 0.7, rad: Math.max(8, Math.round(R * 0.2)), h: Math.round(PEAK * 0.42), shape: 'dome' },
+      { az: lakeA - 1.4, dist: R * 0.73, rad: Math.max(6, Math.round(R * 0.12)), h: Math.round(PEAK * 0.52), shape: 'mesa' },
     ];
     const secSummits = [];
     for (const sp of secPeaks) {
@@ -2139,6 +2139,19 @@ export function create3DScene(world, host, renderer2d) {
       }
       secSummits.push({ x: px0, z: pz0, h: base + sp.h });
     }
+    // 小雪屋地基：低地平整一块（必须在组装前，否则屋墙悬空/入土）
+    const hutA = lakeA + Math.PI * 1.85;
+    const hutX = Math.round(R + Math.cos(hutA) * R * 0.5);
+    const hutZ = Math.round(R + Math.sin(hutA) * R * 0.5);
+    for (let dx = -4; dx <= 4; dx++) {
+      for (let dz = -4; dz <= 4; dz++) {
+        const c = cols.get(key(hutX + dx, hutZ + dz));
+        if (c && !c.lake && !c.spring && c.h <= base + 4) {
+          c.h = base;
+          c.cap = C_SNOW;
+        }
+      }
+    }
     // 组装实例：石基 + 雪身 + 顶盖
     for (const [k, c] of cols) {
       const i = Math.floor(k / 1000);
@@ -2151,32 +2164,81 @@ export function create3DScene(world, host, renderer2d) {
         arr.push({ x: i, z: j, y0: 0, h: c.h, sx: 1, sz: 1, rgb: c.cap, glow: c.spring });
       }
     }
-    // 木桥：主峰雪台 → 三座次峰山顶；桥面木板残缺不连续，积雪不规则覆盖
+    // 木桥：主峰雪台 → 三座次峰山顶；双排桥面板、栏柱成对、暖灯夜照、
+    // 积雪不规则覆盖、木板残缺不连续
     const mainTop = base + skirtH + spikeH;
     for (const s of secSummits) {
       const dist = Math.hypot(s.x - R, s.z - R);
-      const steps = Math.ceil(dist * 1.6);
+      const steps = Math.ceil(dist);
+      const ux = (s.x - R) / dist;
+      const uz = (s.z - R) / dist;
+      const nx = -uz;
+      const nz = ux; // 桥面横向单位向量
       for (let k = 0; k <= steps; k++) {
         const f = k / steps;
-        if (f > 0.02 && f < 0.98 && rand() < 0.07) continue; // 木板残缺
-        const bx = Math.round(R + (s.x - R) * f);
-        const bz = Math.round(R + (s.z - R) * f);
+        if (f > 0.02 && f < 0.98 && rand() < 0.05) continue; // 木板残缺
+        const bx = R + (s.x - R) * f;
+        const bz = R + (s.z - R) * f;
         const by = Math.round(mainTop + (s.h - mainTop) * f) + 1;
-        arr.push({ x: bx, z: bz, y0: by, h: 0.4, sx: 1.4, sz: 1.4, rgb: C_WOOD, glow: false });
-        if (rand() < 0.4) {
-          arr.push({ x: bx, z: bz, y0: by + 0.4, h: 0.3, sx: 1.2, sz: 1.2, rgb: C_SNOWCAP, glow: false });
+        // 双排桥面板
+        for (const side of [-0.55, 0.55]) {
+          arr.push({
+            x: Math.round(bx + nx * side), z: Math.round(bz + nz * side),
+            y0: by, h: 0.4, sx: 1.15, sz: 1.15, rgb: C_WOOD, glow: false,
+          });
+        }
+        // 积雪不规则覆盖（左右随机一侧）
+        if (rand() < 0.45) {
+          const snowSide = rand() < 0.5 ? -0.55 : 0.55;
+          arr.push({
+            x: Math.round(bx + nx * snowSide), z: Math.round(bz + nz * snowSide),
+            y0: by + 0.4, h: 0.3, sx: 1.1, sz: 1.1, rgb: C_SNOWCAP, glow: false,
+          });
+        }
+        // 栏柱每 3 步一对
+        if (k % 3 === 0) {
+          for (const side of [-1, 1]) {
+            arr.push({
+              x: Math.round(bx + nx * side), z: Math.round(bz + nz * side),
+              y0: by + 0.4, h: 0.9, sx: 0.3, sz: 0.3, rgb: C_WOOD, glow: false,
+            });
+          }
+        }
+        // 暖灯每 12 步一盏（桥心悬照，夜里一点暖光）
+        if (k % 12 === 6) {
+          arr.push({
+            x: Math.round(bx + nx), z: Math.round(bz + nz),
+            y0: by + 1.3, h: 0.5, sx: 0.6, sz: 0.6, rgb: [255, 180, 90], glow: true,
+          });
         }
       }
     }
-    // 雾凇松林：低地错落的积雪塔冠松
+    // 小雪屋：圆顶雪屋，空心环墙 + 门口 + 屋内暖光 + 冰窗 + 顶盖积雪
+    const domeLayers = [3, 3, 2.4, 1.7, 1];
+    for (let l = 0; l < domeLayers.length; l++) {
+      const r = domeLayers[l];
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dz = -3; dz <= 3; dz++) {
+          const d = Math.sqrt(dx * dx + dz * dz);
+          if (d > r || d < r - 1) continue; // 空心环墙
+          if (l < 2 && dz === 3 && dx === 0) continue; // 门口（朝主峰反侧留待校正，先朝 +z）
+          arr.push({ x: hutX + dx, z: hutZ + dz, y0: base + l, h: 1, sx: 1, sz: 1, rgb: C_SNOWCAP, glow: false });
+        }
+      }
+    }
+    arr.push({ x: hutX, z: hutZ, y0: base + domeLayers.length, h: 0.4, sx: 1.3, sz: 1.3, rgb: C_SNOWCAP, glow: false }); // 顶盖积雪
+    arr.push({ x: hutX, z: hutZ, y0: base + 0.5, h: 0.5, sx: 1, sz: 1, rgb: [255, 190, 110], glow: true }); // 屋内暖光
+    arr.push({ x: hutX + 3, z: hutZ, y0: base + 1.2, h: 0.6, sx: 0.8, sz: 0.8, rgb: C_ICE, glow: true }); // 冰窗透光
+    // 雪原生态：雾凇松林（低地错落的积雪塔冠松，避开雪屋与桥带）
     const pines = [];
-    for (let tries = 0; tries < 400 && pines.length < 26; tries++) {
+    for (let tries = 0; tries < 700 && pines.length < 40; tries++) {
       const a = rand() * Math.PI * 2;
       const rr = skirtHalf + 3 + rand() * Math.max(3, R * 0.95 - skirtHalf - 4);
       const i = Math.round(R + Math.cos(a) * rr);
       const j = Math.round(R + Math.sin(a) * rr);
       const c = cols.get(key(i, j));
       if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (Math.hypot(i - hutX, j - hutZ) < 7) continue;
       if (pines.some((p) => Math.abs(p[0] - i) < 4 && Math.abs(p[1] - j) < 4)) continue;
       pines.push([i, j]);
       const trunk = 2 + ((rand() * 2) | 0);
@@ -2189,8 +2251,45 @@ export function create3DScene(world, host, renderer2d) {
       }
       arr.push({ x: i, z: j, y0: c.h + trunk + 4.5, h: 0.5, sx: 0.8, sz: 0.8, rgb: C_SNOWCAP, glow: false });
     }
+    // 冰凌簇：低地零散的透明冰塔
+    for (let n = 0; n < 10; n++) {
+      const a = rand() * Math.PI * 2;
+      const rr = skirtHalf + 4 + rand() * Math.max(3, R * 0.9 - skirtHalf - 5);
+      const i = Math.round(R + Math.cos(a) * rr);
+      const j = Math.round(R + Math.sin(a) * rr);
+      const c = cols.get(key(i, j));
+      if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (Math.hypot(i - hutX, j - hutZ) < 6) continue;
+      const hgt = 0.8 + rand() * 1.6;
+      arr.push({ x: i, z: j, y0: c.h, h: hgt, sx: 0.4, sz: 0.4, rgb: C_ICE, glow: false });
+      if (rand() < 0.5) {
+        arr.push({ x: i + 1, z: j, y0: c.h, h: hgt * 0.6, sx: 0.3, sz: 0.3, rgb: C_ICE, glow: false });
+      }
+    }
+    // 雪丘：地面缓起的白色圆包
+    for (let n = 0; n < 8; n++) {
+      const a = rand() * Math.PI * 2;
+      const rr = skirtHalf + 4 + rand() * Math.max(3, R * 0.9 - skirtHalf - 5);
+      const i = Math.round(R + Math.cos(a) * rr);
+      const j = Math.round(R + Math.sin(a) * rr);
+      const c = cols.get(key(i, j));
+      if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      arr.push({ x: i, z: j, y0: c.h, h: 0.9, sx: 2 + rand() * 1.5, sz: 2 + rand() * 1.5, rgb: C_SNOWCAP, glow: false });
+    }
+    // 冻枯木：站立的枯树干（雾凇挂枝）
+    for (let n = 0; n < 5; n++) {
+      const a = rand() * Math.PI * 2;
+      const rr = skirtHalf + 4 + rand() * Math.max(3, R * 0.9 - skirtHalf - 5);
+      const i = Math.round(R + Math.cos(a) * rr);
+      const j = Math.round(R + Math.sin(a) * rr);
+      const c = cols.get(key(i, j));
+      if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      arr.push({ x: i, z: j, y0: c.h, h: 3 + ((rand() * 2) | 0), sx: 0.4, sz: 0.4, rgb: C_WOOD, glow: false });
+      arr.push({ x: i, z: j, y0: c.h + 2.5, h: 0.4, sx: 1.2, sz: 0.4, rgb: C_WOOD, glow: false });
+      arr.push({ x: i, z: j, y0: c.h + 2.9, h: 0.3, sx: 1.2, sz: 0.4, rgb: C_SNOWCAP, glow: false });
+    }
     // 岩石露头：雪坡上探出的裸岩
-    for (let n = 0; n < 6; n++) {
+    for (let n = 0; n < 10; n++) {
       const a = rand() * Math.PI * 2;
       const ad = spikeHalf * 0.6 + rand() * (skirtHalf - spikeHalf) * 0.8;
       const i = Math.round(R + Math.cos(a) * ad);

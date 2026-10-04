@@ -1667,6 +1667,7 @@ export function create3DScene(world, host, renderer2d) {
       steam: new THREE.MeshLambertMaterial({ color: 0xb9c4ce, transparent: true, opacity: 0.38 }),
       bubble: new THREE.MeshBasicMaterial({ color: 0xff9a4d }),
       geyser: new THREE.MeshBasicMaterial({ color: 0xeaf6ff, transparent: true, opacity: 0.5 }),
+      pool: new THREE.MeshBasicMaterial({ color: 0x69c8dc, transparent: true, opacity: 0.85 }),
     };
     // 蒸汽点：锥坡喷气孔 5 处 + 熔岩流出口 3 处（熔岩触低地即生白汽）
     const vents = [];
@@ -1701,14 +1702,37 @@ export function create3DScene(world, host, renderer2d) {
     }
     steam.count = puffs.length;
     scene.add(steam);
-    // 间歇泉：立在温泉池上（无温泉则省略），周期喷出白色汽柱
-    let geyser = null;
-    let spring = null;
+    // 间歇泉 ×4：温泉池上 1 座 + 低地随机 3 座（火山锥外、避开河），各自错峰喷发
+    const geysers = [];
+    const addGeyser = (wx, wz, gy, off, withPool) => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1, 1.7), mats.geyser);
+      mesh.visible = false;
+      scene.add(mesh);
+      let pool = null;
+      if (withPool) {
+        pool = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 2.6), mats.pool);
+        pool.position.set(wx, gy + 0.1, wz);
+        scene.add(pool);
+      }
+      geysers.push({ mesh, pool, x: wx, z: wz, y: gy, off });
+    };
     if (hotSprings.length) {
-      spring = hotSprings[0];
-      geyser = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1, 1.7), mats.geyser);
-      geyser.visible = false;
-      scene.add(geyser);
+      addGeyser(hotSprings[0].x - R + 0.5, hotSprings[0].z - R + 0.5, hotSprings[0].y, 0, false);
+    }
+    for (let n = 0; n < 3; n++) {
+      for (let tries = 0; tries < 40; tries++) {
+        const a = rand() * Math.PI * 2;
+        const rr = Rv + 5 + rand() * Math.max(3, R * 0.88 - Rv - 6);
+        const gi = Math.round(R + Math.cos(a) * rr);
+        const gj = Math.round(R + Math.sin(a) * rr);
+        const c = cols.get(gi * 1000 + gj);
+        if (!c || c.id === 2) continue; // 河里不放
+        const wx = gi - R + 0.5;
+        const wz = gj - R + 0.5;
+        if (geysers.some((g) => Math.hypot(g.x - wx, g.z - wz) < 9)) continue;
+        addGeyser(wx, wz, c.h, 1.6 + n * 0.9 + rand() * 0.5, true);
+        break;
+      }
     }
     // 火口熔岩湖气泡：湖面鼓包缓慢起伏（呼吸感）
     const bubbles = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mats.bubble, 6);
@@ -1720,7 +1744,7 @@ export function create3DScene(world, host, renderer2d) {
       bub.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, ph: rand() * Math.PI * 2, sp: 0.6 + rand() * 0.9, s: 0.7 + rand() * 0.9 });
     }
     scene.add(bubbles);
-    ventFx = { mats, steam, puffs, dummy, geyser, spring, bubbles, bub };
+    ventFx = { mats, steam, puffs, dummy, geysers, bubbles, bub };
   }
 
   // 切走观赏对象 / 退出时收起全部火山岛 FX（挂着的余烬汽柱不该飘进别的模式）
@@ -1735,7 +1759,10 @@ export function create3DScene(world, host, renderer2d) {
     if (ventFx) {
       ventFx.steam.visible = false;
       ventFx.bubbles.visible = false;
-      ventFx.geyser.visible = false;
+      for (const g of ventFx.geysers) {
+        g.mesh.visible = false;
+        if (g.pool) g.pool.visible = false;
+      }
     }
     geyserHiss(0);
   }
@@ -1746,7 +1773,7 @@ export function create3DScene(world, host, renderer2d) {
       if (ventFx) {
         ventFx.steam.visible = false;
         ventFx.bubbles.visible = false;
-        ventFx.geyser.visible = false;
+        for (const g of ventFx.geysers) g.mesh.visible = false;
       }
       geyserHiss(0);
       return;
@@ -1773,22 +1800,18 @@ export function create3DScene(world, host, renderer2d) {
       ventFx.steam.setMatrixAt(n, ventFx.dummy.matrix);
     }
     ventFx.steam.instanceMatrix.needsUpdate = true;
-    // 间歇泉：7 秒一轮，前 29% 喷发（冲顶→回落），伴嘶鸣
+    // 间歇泉 ×4：各自 7 秒错峰喷发（冲顶→回落），伴嘶鸣
     let erupting = false;
-    if (ventFx.geyser) {
-      const cyc = (t % 7) / 7;
+    for (const g of ventFx.geysers) {
+      const cyc = ((t + g.off) % 7) / 7;
       erupting = cyc < 0.29;
-      ventFx.geyser.visible = erupting;
+      g.mesh.visible = erupting;
       if (erupting) {
         const p = cyc / 0.29;
-        const h = 13 * Math.sin(p * Math.PI) ** 0.6;
-        ventFx.geyser.scale.y = Math.max(0.001, h);
-        ventFx.geyser.position.set(
-          ventFx.spring.x - R + 0.5,
-          ventFx.spring.y + h / 2,
-          ventFx.spring.z - R + 0.5
-        );
-        ventFx.geyser.rotation.y += 0.02;
+        const h = (g.off === 0 ? 13 : 9 + (g.off % 2)) * Math.sin(p * Math.PI) ** 0.6;
+        g.mesh.scale.y = Math.max(0.001, h);
+        g.mesh.position.set(g.x, g.y + h / 2, g.z);
+        g.mesh.rotation.y += 0.02;
       }
     }
     geyserHiss(erupting ? 0.5 : 0);
@@ -1811,9 +1834,13 @@ export function create3DScene(world, host, renderer2d) {
     ventFx.steam.geometry.dispose();
     scene.remove(ventFx.bubbles);
     ventFx.bubbles.geometry.dispose();
-    if (ventFx.geyser) {
-      scene.remove(ventFx.geyser);
-      ventFx.geyser.geometry.dispose();
+    for (const g of ventFx.geysers) {
+      scene.remove(g.mesh);
+      g.mesh.geometry.dispose();
+      if (g.pool) {
+        scene.remove(g.pool);
+        g.pool.geometry.dispose();
+      }
     }
     for (const k in ventFx.mats) ventFx.mats[k].dispose();
     ventFx = null;
@@ -1852,6 +1879,8 @@ export function create3DScene(world, host, renderer2d) {
     const mats = {
       crow: new THREE.MeshLambertMaterial({ color: 0x3a3a46 }),
       fly: new THREE.MeshBasicMaterial({ color: 0xd4ff7a }),
+      ele: new THREE.MeshLambertMaterial({ color: 0x75757f }),
+      tusk: new THREE.MeshLambertMaterial({ color: 0xe6e0d0 }),
     };
     // 火山鸦：深色巨翼，绕火口高空盘旋
     const crows = [];
@@ -1895,7 +1924,47 @@ export function create3DScene(world, host, renderer2d) {
         p3: rand() * Math.PI * 2,
       });
     }
-    islandFauna = { crows, flies, mats, t0: performance.now() };
+    // 大象：灰色庞然，绕火山脚慢行（4 只错峰错向，鼻甩身晃贴地走）
+    const eles = [];
+    for (let n = 0; n < 4; n++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.7, 3.8), mats.ele);
+      body.position.y = 1.95;
+      g.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.4), mats.ele);
+      head.position.set(0, 2.15, 2.4);
+      g.add(head);
+      const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.6, 0.45), mats.ele);
+      trunk.position.set(0, 1.35, 3.15);
+      g.add(trunk);
+      const el = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.05, 0.95), mats.ele);
+      el.position.set(-0.85, 2.25, 2.1);
+      g.add(el);
+      const er = el.clone();
+      er.position.x = 0.85;
+      g.add(er);
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.18, 0.7), mats.tusk);
+      tl.position.set(-0.5, 1.55, 2.85);
+      g.add(tl);
+      const tr = tl.clone();
+      tr.position.x = 0.5;
+      g.add(tr);
+      for (const [lx, lz] of [[-0.9, 1.35], [0.9, 1.35], [-0.9, -1.35], [0.9, -1.35]]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.4, 0.6), mats.ele);
+        leg.position.set(lx, 0.7, lz);
+        g.add(leg);
+      }
+      scene.add(g);
+      eles.push({
+        g, trunk,
+        r: Rv * 1.12 + n * 1.6,
+        ph: n * 1.7,
+        sp: 0.045 + rand() * 0.02,
+        dir: n % 2 === 0 ? 1 : -1,
+        bob: rand() * 6,
+      });
+    }
+    islandFauna = { crows, flies, eles, mats, t0: performance.now() };
   }
 
   function disposeIslandFauna() {
@@ -1907,6 +1976,7 @@ export function create3DScene(world, host, renderer2d) {
     };
     for (const c of islandFauna.crows) kill(c.g);
     for (const f of islandFauna.flies) kill(f.mesh);
+    for (const e of islandFauna.eles) kill(e.g);
     for (const k in islandFauna.mats) islandFauna.mats[k].dispose();
     islandFauna = null;
   }
@@ -1934,6 +2004,18 @@ export function create3DScene(world, host, renderer2d) {
         f.cz + Math.cos(t * f.s3 + f.p3) * f.az
       );
       f.mesh.visible = ready && Math.sin(t * 1.7 + f.p2) > -0.6;
+    }
+    // 大象绕火山脚慢行（贴地走：高度逐帧查地形，鼻甩身晃）
+    for (const e of islandFauna.eles) {
+      const a = e.ph + t * e.sp * e.dir;
+      const x = Math.cos(a) * e.r;
+      const z = Math.sin(a) * e.r;
+      const col = cols.get(Math.round(R + x) * 1000 + Math.round(R + z));
+      const gy = col ? col.h : 3;
+      e.g.position.set(x, gy + Math.abs(Math.sin(t * 2.2 + e.bob)) * 0.12, z);
+      e.g.rotation.y = Math.atan2(-Math.sin(a) * e.dir, Math.cos(a) * e.dir);
+      e.trunk.rotation.x = Math.sin(t * 1.5 + e.bob) * 0.35;
+      e.g.visible = ready;
     }
   }
 
@@ -2024,6 +2106,39 @@ export function create3DScene(world, host, renderer2d) {
         }
       }
     }
+    // 三座次峰：高低不同、形状各异（尖锥/圆顶/方桌），与主峰不相连（低地雪原隔开）
+    const secPeaks = [
+      { az: lakeA + 0.9, dist: R * 0.62, rad: Math.max(5, Math.round(R * 0.1)), h: Math.round(PEAK * 0.58), shape: 'cone' },
+      { az: lakeA + 2.6, dist: R * 0.56, rad: Math.max(6, Math.round(R * 0.15)), h: Math.round(PEAK * 0.34), shape: 'dome' },
+      { az: lakeA - 1.4, dist: R * 0.6, rad: Math.max(5, Math.round(R * 0.09)), h: Math.round(PEAK * 0.46), shape: 'mesa' },
+    ];
+    const secSummits = [];
+    for (const sp of secPeaks) {
+      const px0 = Math.round(R + Math.cos(sp.az) * sp.dist);
+      const pz0 = Math.round(R + Math.sin(sp.az) * sp.dist);
+      for (let dx = -sp.rad - 1; dx <= sp.rad + 1; dx++) {
+        for (let dz = -sp.rad - 1; dz <= sp.rad + 1; dz++) {
+          const c = cols.get(key(px0 + dx, pz0 + dz));
+          if (!c || c.lake || c.spring) continue;
+          const d = Math.sqrt(dx * dx + dz * dz);
+          let add = 0;
+          if (sp.shape === 'cone') {
+            if (d <= sp.rad) add = Math.round(sp.h * (1 - d / sp.rad));
+          } else if (sp.shape === 'dome') {
+            if (d <= sp.rad) add = Math.round(sp.h * (1 - (d / sp.rad) ** 2));
+          } else if (d <= sp.rad * 0.55) {
+            add = sp.h; // 方桌：平顶
+          } else if (d <= sp.rad) {
+            add = Math.round(sp.h * (1 - (d - sp.rad * 0.55) / (sp.rad * 0.45)));
+          }
+          if (add > 0) {
+            c.h = Math.max(c.h, base + add);
+            c.cap = d < sp.rad * 0.35 ? C_ICE : C_SNOW;
+          }
+        }
+      }
+      secSummits.push({ x: px0, z: pz0, h: base + sp.h });
+    }
     // 组装实例：石基 + 雪身 + 顶盖
     for (const [k, c] of cols) {
       const i = Math.floor(k / 1000);
@@ -2034,6 +2149,23 @@ export function create3DScene(world, host, renderer2d) {
         arr.push({ x: i, z: j, y0: c.h - 1, h: 1, sx: 1, sz: 1, rgb: c.cap, glow: c.spring });
       } else {
         arr.push({ x: i, z: j, y0: 0, h: c.h, sx: 1, sz: 1, rgb: c.cap, glow: c.spring });
+      }
+    }
+    // 木桥：主峰雪台 → 三座次峰山顶；桥面木板残缺不连续，积雪不规则覆盖
+    const mainTop = base + skirtH + spikeH;
+    for (const s of secSummits) {
+      const dist = Math.hypot(s.x - R, s.z - R);
+      const steps = Math.ceil(dist * 1.6);
+      for (let k = 0; k <= steps; k++) {
+        const f = k / steps;
+        if (f > 0.02 && f < 0.98 && rand() < 0.07) continue; // 木板残缺
+        const bx = Math.round(R + (s.x - R) * f);
+        const bz = Math.round(R + (s.z - R) * f);
+        const by = Math.round(mainTop + (s.h - mainTop) * f) + 1;
+        arr.push({ x: bx, z: bz, y0: by, h: 0.4, sx: 1.4, sz: 1.4, rgb: C_WOOD, glow: false });
+        if (rand() < 0.4) {
+          arr.push({ x: bx, z: bz, y0: by + 0.4, h: 0.3, sx: 1.2, sz: 1.2, rgb: C_SNOWCAP, glow: false });
+        }
       }
     }
     // 雾凇松林：低地错落的积雪塔冠松
@@ -2377,7 +2509,7 @@ export function create3DScene(world, host, renderer2d) {
       mode === 'island' && craterFx
         ? { eruption: craterFx.erupting, phase: craterFx.phase }
         : null,
-    vents: mode === 'island' && ventFx ? { puffs: ventFx.puffs.length, geyser: !!ventFx.geyser } : null,
+    vents: mode === 'island' && ventFx ? { puffs: ventFx.puffs.length, geysers: ventFx.geysers.length } : null,
     snow:
       mode === 'snow' && snowFx
         ? { blizzard: snowFx.blizzardNow, avalanche: snowFx.avalancheNow }

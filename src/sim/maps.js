@@ -98,6 +98,14 @@ function giantTree(w, gx, surf, cfg) {
   }
 }
 
+// 柱面地表行：自上而下首个非空格（风景建筑落地用）
+function surfaceY(w, x) {
+  for (let y = 0; y < w.h; y++) {
+    if (w.cells[y * w.w + x] !== E.EMPTY) return y;
+  }
+  return w.h;
+}
+
 // ===== 五张初始地图（按世界比例生成，横竖屏通用）=====
 
 // 群岛：海面沙岛群 + 礁石珊瑚 + 每分钟交替海啸 + 周期雷暴
@@ -185,6 +193,48 @@ function archipelagoGen(w) {
     if (w.cells[y * W + x] === E.WATER && w.cells[y * W + x + 1] === E.WATER) {
       fillRect(w, x, y, x + 1, y, E.WOOD);
     }
+  }
+  // 灯塔：主岛顶石塔 + 玻璃灯室
+  const lhx = Math.round(W * 0.5);
+  const lhy = surfaceY(w, lhx);
+  fillRect(w, lhx, lhy - 4, lhx, lhy - 1, E.STONE);
+  put(w, lhx, lhy - 5, E.GLASS);
+  put(w, lhx, lhy - 6, E.STONE);
+  // 栈桥码头：自岛缘伸入海面（桩入水）
+  let pierX = -1;
+  for (let x = 4; x < W - 4; x++) {
+    const a = surfaceY(w, x);
+    const topC = w.cells[a * W + x];
+    const b = surfaceY(w, x + 1);
+    const botC = w.cells[b * W + x + 1];
+    if ((topC === E.SAND || topC === E.PLANT) && b === sea && botC === E.WATER) {
+      pierX = x + 1;
+      break;
+    }
+  }
+  if (pierX > 0) {
+    for (let x = pierX - 1; x <= pierX + 5; x++) put(w, x, sea - 1, E.WOOD);
+    for (let x = pierX + 1; x <= pierX + 5; x += 2) fillRect(w, x, sea, x, sea + 2, E.WOOD);
+  }
+  // 高脚渔屋：找开阔海面架桩悬居
+  let fhx = -1;
+  for (let tries = 0; tries < 60 && fhx < 0; tries++) {
+    const x = 2 + ((Math.random() * (W - 4)) | 0);
+    let top = 0;
+    for (let y = 0; y < H; y++) {
+      const c = w.cells[y * W + x];
+      if (c !== E.EMPTY) {
+        top = c;
+        break;
+      }
+    }
+    if (top === E.WATER && w.cells[sea * W + x] === E.WATER) fhx = x;
+  }
+  if (fhx > 0) {
+    for (const dx of [-1, 1]) fillRect(w, fhx + dx, sea + 1, fhx + dx, sea + 4, E.WOOD);
+    fillRect(w, fhx - 2, sea, fhx + 2, sea, E.WOOD);
+    fillRect(w, fhx - 1, sea - 2, fhx + 1, sea - 1, E.WOOD);
+    fillRect(w, fhx - 2, sea - 3, fhx + 2, sea - 3, E.PLANT);
   }
 }
 
@@ -311,6 +361,31 @@ function volcanoGen(w) {
     const y = baseY + 1 + ((Math.random() * 2) | 0);
     blob(w, x, y, 2, 1, E.STONE);
   }
+  // 玄武岩石柱群：锥脚棱柱丛（避开熔岩）
+  const bxx = cx + Math.round(halfW * 0.72);
+  for (const [ox, hgt] of [[-2, 4], [-1, 6], [0, 7], [1, 5], [2, 3]]) {
+    const cxn = bxx + ox;
+    const cyn = surfaceY(w, cxn);
+    if (w.cells[cyn * W + cxn] === E.LAVA) continue;
+    fillRect(w, cxn, cyn - hgt, cxn, cyn - 1, E.STONE);
+  }
+  // 石砌瞭望塔：左肩坡上的岗哨（玻璃瞭望口）
+  const wtx = cx - Math.round(halfW * 0.55);
+  const wty = surfaceY(w, wtx);
+  if (w.cells[wty * W + wtx] !== E.LAVA) {
+    fillRect(w, wtx - 1, wty - 5, wtx + 1, wty - 1, E.STONE);
+    put(w, wtx, wty - 6, E.GLASS);
+    put(w, wtx - 1, wty - 6, E.STONE);
+    put(w, wtx + 1, wty - 6, E.STONE);
+  }
+  // 环形石祭坛：锥脚前的祭台
+  const axx = cx - Math.round(halfW * 1.5);
+  const ayy = surfaceY(w, axx);
+  for (let a2 = 0; a2 < 12; a2++) {
+    const aa = (a2 / 12) * Math.PI * 2;
+    put(w, axx + Math.round(Math.cos(aa) * 4), ayy - 1 + Math.round(Math.sin(aa) * 2), E.STONE);
+  }
+  fillRect(w, axx - 1, ayy - 1, axx + 1, ayy - 1, E.STONE);
 }
 
 // 周期喷发：末段火口冒烟前兆，循环起点抛射熔岩
@@ -328,11 +403,16 @@ function volcanoTick(w, frame) {
     }
     // 岩屑滚落：锥坡撒沙，喷发前的震颤剥蚀（沙顺坡滑进火口或山脚）
     if (frame % 25 === 0) {
-      const side = Math.random() < 0.5 ? 1 : -1;
-      const t = 0.3 + Math.random() * 0.4;
-      const x = cx + side * Math.round(halfW * t);
-      const y = baseY - Math.round(coneH * (1 - t)) - 1;
-      if (y >= 0 && w.cells[y * w.w + x] === E.EMPTY) w.set(y * w.w + x, E.SAND);
+      for (let a2 = 0; a2 < 3; a2++) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const t = 0.3 + Math.random() * 0.4;
+        const x = cx + side * Math.round(halfW * t);
+        const y = baseY - Math.round(coneH * (1 - t)) - 1;
+        if (y >= 0 && w.cells[y * w.w + x] === E.EMPTY) {
+          w.set(y * w.w + x, E.SAND);
+          break;
+        }
+      }
     }
   } else if (phase >= 260 && phase < VOLCANO_CYCLE - 200) {
     // 火口熔岩鼓泡：湖面上方鼓起一撮熔岩又落回（呼吸感，零净量）
@@ -466,6 +546,74 @@ function forest(w) {
       }
     }
   }
+  // 观景木亭：平台四柱草顶
+  const gx = Math.round(W * 0.63);
+  const gy = surf[gx];
+  fillRect(w, gx - 2, gy - 1, gx + 2, gy - 1, E.WOOD);
+  for (const dx of [-2, 2]) {
+    fillRect(w, gx + dx, gy - 3, gx + dx, gy - 2, E.WOOD);
+  }
+  fillRect(w, gx - 3, gy - 4, gx + 3, gy - 4, E.PLANT);
+  // 池上拱桥：找最长连片水面，宽度适中（4~22 格）才搭桥——海岸长水带不搭
+  let bestA = -1;
+  let bestB = -1;
+  let bestTop = H;
+  let bestLen = 0;
+  {
+    let pxA = -1;
+    let pxB = -1;
+    let pyTop = H;
+    for (let x = 2; x < W - 2; x++) {
+      let wat = false;
+      let top = H;
+      for (let y = 0; y < H; y++) {
+        if (w.cells[y * W + x] === E.WATER) {
+          wat = true;
+          top = Math.min(top, y);
+          break;
+        }
+      }
+      if (wat) {
+        if (pxA < 0) pxA = x;
+        pxB = x;
+        pyTop = Math.min(pyTop, top);
+      } else if (pxA >= 0) {
+        if (pxB - pxA > bestLen) {
+          bestLen = pxB - pxA;
+          bestA = pxA;
+          bestB = pxB;
+          bestTop = pyTop;
+        }
+        pxA = -1;
+        pxB = -1;
+        pyTop = H;
+      }
+    }
+    if (pxA >= 0 && pxB - pxA > bestLen) {
+      bestA = pxA;
+      bestB = pxB;
+      bestTop = pyTop;
+    }
+  }
+  if (bestA > 0 && bestLen >= 4 && bestLen <= 22) {
+    for (let x = bestA - 1; x <= bestB + 1; x++) {
+      const t = (x - bestA + 1) / (bestLen + 2);
+      const arch = Math.round(Math.sin(t * Math.PI) * 2);
+      fillRect(w, x, bestTop - 1 - arch, x, bestTop - arch, E.WOOD);
+    }
+  }
+  // 树屋：架在参天大树的主干上
+  const htx = Math.round(W * 0.78);
+  const hty = surf[htx] - Math.round(H * 0.3 * 0.62);
+  fillRect(w, htx - 1, hty, htx + 3, hty, E.WOOD);
+  fillRect(w, htx, hty - 1, htx + 2, hty - 1, E.WOOD);
+  fillRect(w, htx, hty - 2, htx + 2, hty - 2, E.WOOD);
+  fillRect(w, htx - 1, hty - 3, htx + 3, hty - 3, E.PLANT);
+  // 篱笆小径：木桩夹草径
+  for (let x = Math.round(W * 0.04); x < Math.round(W * 0.34); x += 3) {
+    put(w, x, surf[x] - 1, E.WOOD);
+    put(w, x + 1, surf[x] - 1, E.PLANT);
+  }
 }
 
 // 青山林事件：晨雾漫林（无水净量的烟）+ 稀疏雷击起火（每 4 轮一道，烧出林窗）
@@ -533,6 +681,31 @@ function canyon(w) {
   for (const fx of [0.6, 0.645]) {
     const px = Math.round(W * fx);
     fillRect(w, px, plankY + 1, px, plankY + 2, E.WOOD);
+  }
+  // 跨谷吊桥：横贯峡谷的木桥（栏柱成排）
+  const bx0 = Math.round(W * 0.3);
+  const bx1 = Math.round(W * 0.7);
+  for (let x = bx0; x <= bx1; x++) {
+    put(w, x, plateau - 1, E.WOOD);
+    if (x % 4 === 0) {
+      put(w, x, plateau - 2, E.WOOD);
+      put(w, x, plateau - 3, E.WOOD);
+    }
+  }
+  // 天然石拱：跨河石拱门（两壁起拱）
+  const ax0 = Math.round(W * 0.335);
+  const ax1 = Math.round(W * 0.665);
+  for (let x = ax0; x <= ax1; x++) {
+    const t = (x - ax0) / (ax1 - ax0);
+    const ay = plateau - Math.round(Math.sin(t * Math.PI) * 3);
+    fillRect(w, x, ay, x, ay + 1, E.STONE);
+  }
+  // 崖壁洞穴：右壁凹室
+  const cvx = Math.round(W * 0.9);
+  for (let dx = 0; dx < 3; dx++) {
+    for (let dy = 0; dy < 2; dy++) {
+      put(w, cvx - dx, plateau + 5 + dy, E.EMPTY);
+    }
   }
 }
 
@@ -612,6 +785,25 @@ function desert(w) {
     fillRect(w, spx - 2, sy0 + 3, spx + 2, sy0 + 3, E.SAND);
     fillRect(w, spx - 1, sy0 + 2, spx + 1, sy0 + 2, E.OIL);
   }
+  // 金沙岩金字塔：六层收分的沙岩石丘地标
+  const pxx = Math.round(W * 0.75);
+  const pyy = surfaceY(w, pxx);
+  for (let l = 0; l < 6; l++) {
+    const r = 6 - l;
+    fillRect(w, pxx - r, pyy - 1 - l, pxx + r, pyy - 1 - l, E.SAND);
+  }
+  // 石雕巨像：方碑坐像（身+头+前臂）
+  const sxx = Math.round(W * 0.35);
+  const syy = surfaceY(w, sxx);
+  fillRect(w, sxx, syy - 5, sxx + 1, syy - 1, E.STONE);
+  fillRect(w, sxx, syy - 7, sxx + 1, syy - 5, E.STONE);
+  put(w, sxx - 1, syy - 3, E.STONE);
+  // 绿洲棕榈棚：双柱草顶凉棚
+  const phx = Math.round(W * 0.16) + 5;
+  const phy = surfaceY(w, phx);
+  fillRect(w, phx - 1, phy - 3, phx - 1, phy - 1, E.WOOD);
+  fillRect(w, phx + 1, phy - 3, phx + 1, phy - 1, E.WOOD);
+  fillRect(w, phx - 2, phy - 4, phx + 2, phy - 4, E.PLANT);
 }
 
 // 沙漠事件：沙暴横扫 + 绿洲蒸腾（无水净量）+ 油泉渗涨（有界）
@@ -740,6 +932,27 @@ function cityGen(w) {
     const top = groundY - Math.round(H * fh) - 2;
     fillRect(w, sx, top - 3, sx, top, E.METAL);
   }
+  // 钟塔：街口石塔 + 玻璃钟面 + 金属尖顶
+  const ctx0 = Math.round(W * 0.535);
+  fillRect(w, ctx0, groundY - 9, ctx0 + 1, groundY - 1, E.STONE);
+  put(w, ctx0, groundY - 8, E.GLASS);
+  put(w, ctx0 + 1, groundY - 8, E.GLASS);
+  fillRect(w, ctx0, groundY - 11, ctx0 + 1, groundY - 10, E.METAL);
+  // 高楼天桥：连接两栋楼的空中木廊（栏柱成排）
+  const bb0 = Math.round(W * 0.76);
+  const bb1 = Math.round(W * 0.8);
+  const bby = groundY - Math.round(H * 0.2);
+  for (let x = bb0; x <= bb1; x++) {
+    put(w, x, bby, E.WOOD);
+    if (x % 3 === 0) put(w, x, bby - 1, E.WOOD);
+  }
+  // 环形喷泉广场：石环环抱喷水柱
+  const fqx = Math.round(W * 0.3);
+  for (let a2 = 0; a2 < 14; a2++) {
+    const aa = (a2 / 14) * Math.PI * 2;
+    put(w, fqx + Math.round(Math.cos(aa) * 3), groundY - 1, E.STONE);
+  }
+  fillRect(w, fqx, groundY - 2, fqx, groundY - 1, E.WATER);
 }
 
 // 玻璃之城事件：街雾 + 雷暴夜天线引雷（金属导电的活演示）
@@ -937,6 +1150,35 @@ function snowMountainGen(w) {
       const i = cy * W + c.x + dx;
       if (w.cells[i] === E.PLANT && rand() < 0.75) w.set(i, E.SNOW);
     }
+  }
+  // 两层木屋：木墙四层 + 冰窗 + 木顶 + 顶雪（雪落在木顶上站得住）+ 门洞
+  const hx0 = Math.round(W * 0.45);
+  const hy0 = surf[hx0];
+  fillRect(w, hx0 - 1, hy0 - 4, hx0 + 2, hy0 - 1, E.WOOD);
+  fillRect(w, hx0 - 2, hy0 - 5, hx0 + 3, hy0 - 5, E.WOOD);
+  fillRect(w, hx0 - 1, hy0 - 6, hx0 + 2, hy0 - 6, E.SNOW);
+  put(w, hx0 - 1, hy0 - 3, E.ICE);
+  put(w, hx0 - 1, hy0 - 2, E.ICE);
+  put(w, hx0 + 1, hy0 - 3, E.ICE);
+  put(w, hx0 + 1, hy0 - 1, E.EMPTY);
+  put(w, hx0 + 1, hy0 - 2, E.EMPTY);
+  // 雪人 ×2：双宽底座防滑塌，冰晶头
+  for (const fx of [0.3, 0.62]) {
+    const sx0 = Math.round(W * fx);
+    const sy0 = surfaceY(w, sx0);
+    put(w, sx0, sy0 - 1, E.SNOW);
+    put(w, sx0 + 1, sy0 - 1, E.SNOW);
+    put(w, sx0, sy0 - 2, E.SNOW);
+    put(w, sx0 + 1, sy0 - 2, E.SNOW);
+    put(w, sx0, sy0 - 3, E.ICE);
+  }
+  // 冰雕拱门：温泉畔的透光冰拱
+  const ia0 = Math.round(W * 0.19);
+  for (let x = ia0; x <= ia0 + 5; x++) {
+    const t = (x - ia0) / 5;
+    const ay = surfaceY(w, x) - Math.round(Math.sin(t * Math.PI) * 3) - 1;
+    put(w, x, ay, E.ICE);
+    put(w, x, ay + 1, E.ICE);
   }
 }
 

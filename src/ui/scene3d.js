@@ -69,17 +69,31 @@ export function create3DScene(world, host, renderer2d) {
   function inRiver(r, ang) {
     return Math.abs(r - riverRadius(ang)) < 2.4;
   }
-  // 支流：从火山脚向外延伸到主河的 4 条放射小溪
+  // 支流：从火山脚向外延伸到主河的 6 条放射小溪
+  const tribBase = [0.55, 1.45, 2.35, 3.25, 4.15, 5.05].map((a) => a + riverSeed);
   function inTributary(i, j, ang, r) {
-    for (let k = 0; k < 4; k++) {
-      const tribAng = veinBase[k] + Math.PI + Math.sin(r * 0.12 + k * 3.1) * 0.18;
+    for (let k = 0; k < tribBase.length; k++) {
+      const tribAng = tribBase[k] + Math.sin(r * 0.12 + k * 3.1) * 0.18;
       const da = Math.abs(((ang - tribAng + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
       if (da < 0.05 && r > Rv * 0.98 && r < riverRadius(ang) - 2) return true;
     }
     return false;
   }
+  // 出海水道：出海口方向的支流越岛缘把水引上黑底盘（与熔岩道角距拉满，互不相撞）
+  const outflowAng = tribBase[3];
+  // 熔岩道：接 0 号岩脉出锥，跨环河（接触点白汽+黑曜石）后一路流到盘缘
+  const lavaExit = veinBase[0] + veinOffset(Rv, 0);
+  const wig = (r, s) => Math.sin(r * 0.13 + s) * 0.05;
+  const nearAng = (ang, target, w) =>
+    Math.abs(((ang - target + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < w;
+  // 熔岩与环河的接触点（世界坐标）：白汽翻涌 + 黑曜石散布的锚点
+  const lavaContact = {
+    x: Math.cos(lavaExit) * riverRadius(lavaExit) - R + 0.5,
+    z: Math.sin(lavaExit) * riverRadius(lavaExit) - R + 0.5,
+  };
 
   const cols = new Map(); // key → {h, id}
+  const noTree = new Set(); // 熔岩道/水道/接触点周围禁种树
   for (let i = 0; i < S; i++) {
     for (let j = 0; j < S; j++) {
       const dx = i - R;
@@ -113,6 +127,16 @@ export function create3DScene(world, host, renderer2d) {
         if (inRiver(r, ang) || inTributary(i, j, ang, r)) {
           h = 1; // 河床下切
           id = 2; // 水
+        } else if (r > Rv && nearAng(ang, lavaExit + wig(r, 1), 0.04)) {
+          // 熔岩道：接岩脉出锥，贴低地地表流淌；跨环河段让位给水（接触点在两岸）
+          h = Math.max(2, h);
+          id = 11;
+          noTree.add(key);
+        } else if (nearAng(ang, outflowAng + wig(r, 0), 0.035) && r > riverRadius(ang) - 1) {
+          // 出海水道：自河岸直通岛缘
+          h = 1;
+          id = 2;
+          noTree.add(key);
         } else if (r > R * 0.965) {
           h = Math.max(1, h - 1); // 外缘
         }
@@ -154,6 +178,45 @@ export function create3DScene(world, host, renderer2d) {
               ? C_SOIL
               : C_STONE;
     items.push({ x: i, z: j, y0: 0, h: col.h, sx: 1, sz: 1, rgb, glow: col.id === 11, id: col.id });
+  }
+  // 黑底盘上的两条尾流：出海水流与熔岩各自从岛缘延展到盘面深处（角距拉满不相交）
+  const discEnd = R * 1.22;
+  for (let rr = R + 1; rr <= discEnd; rr++) {
+    const wa = outflowAng + wig(rr, 0) * 1.4;
+    items.push({
+      x: Math.round(R + Math.cos(wa) * rr), z: Math.round(R + Math.sin(wa) * rr),
+      y0: -1, h: 1.3, sx: 1, sz: 1, rgb: C_WATER, glow: false,
+    });
+    const la = lavaExit + wig(rr, 1) * 1.4;
+    items.push({
+      x: Math.round(R + Math.cos(la) * rr), z: Math.round(R + Math.sin(la) * rr),
+      y0: -1, h: 1.3, sx: 1, sz: 1, rgb: C_LAVA, glow: true,
+    });
+  }
+  // 出海跌水：岛缘断崖处的水柱（岛面水流落到底盘）
+  const fa = outflowAng + wig(R, 0) * 1.4;
+  items.push({
+    x: Math.round(R + Math.cos(fa) * (R + 0.5)), z: Math.round(R + Math.sin(fa) * (R + 0.5)),
+    y0: -1, h: 3, sx: 1, sz: 1, rgb: C_WATER, glow: false,
+  });
+  // 黑曜石：熔岩触河接触点四周不规则散布（随机角距独立抖动，不成环）
+  const contactR = riverRadius(lavaExit);
+  const contactI = Math.round(R + Math.cos(lavaExit) * contactR);
+  const contactJ = Math.round(R + Math.sin(lavaExit) * contactR);
+  for (let dx = -5; dx <= 5; dx++) {
+    for (let dz = -5; dz <= 5; dz++) noTree.add((contactI + dx) * 1000 + (contactJ + dz));
+  }
+  for (let n = 0; n < 14; n++) {
+    const a = lavaExit + (rand() - 0.5) * 0.5;
+    const rr = contactR + (rand() - 0.5) * 9;
+    const oi = Math.round(R + Math.cos(a) * rr);
+    const oj = Math.round(R + Math.sin(a) * rr);
+    const c = cols.get(oi * 1000 + oj);
+    if (!c) continue;
+    items.push({
+      x: oi, z: oj, y0: c.h, h: 0.6 + rand() * 0.8,
+      sx: 0.7 + rand() * 0.6, sz: 0.7 + rand() * 0.6, rgb: [40, 34, 52], glow: false,
+    });
   }
 
   // 树：4 种形态，随机散布在外圈泥土地上（避开河道）
@@ -200,6 +263,7 @@ export function create3DScene(world, host, renderer2d) {
   for (let tries = 0; tries < 600 && treeCount < 70; tries++) {
     const it = soilCols[(rand() * soilCols.length) | 0];
     if (!it) break;
+    if (noTree.has(it.x * 1000 + it.z)) continue; // 避开水道/熔岩道/接触点
     if (items.some((o) => o.tree && Math.abs(o.x - it.x) < 4 && Math.abs(o.z - it.z) < 4)) continue;
     addTree(it.x, it.z, it.h);
     it.tree = true;
@@ -1744,7 +1808,18 @@ export function create3DScene(world, host, renderer2d) {
       bub.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, ph: rand() * Math.PI * 2, sp: 0.6 + rand() * 0.9, s: 0.7 + rand() * 0.9 });
     }
     scene.add(bubbles);
-    ventFx = { mats, steam, puffs, dummy, geysers, bubbles, bub };
+    // 熔岩触河接触点：白汽大量翻涌（岩浆遇水的生死之交）
+    const cSteam = [];
+    for (let n = 0; n < 10; n++) {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 2.4, 2.4),
+        new THREE.MeshLambertMaterial({ color: 0xcfd8e2, transparent: true, opacity: 0.5 })
+      );
+      m.visible = false;
+      scene.add(m);
+      cSteam.push({ mesh: m, born: -1, ox: (rand() - 0.5) * 7, oz: (rand() - 0.5) * 7 });
+    }
+    ventFx = { mats, steam, puffs, dummy, geysers, bubbles, cSteam, contact: lavaContact, bub };
   }
 
   // 切走观赏对象 / 退出时收起全部火山岛 FX（挂着的余烬汽柱不该飘进别的模式）
@@ -1763,6 +1838,7 @@ export function create3DScene(world, host, renderer2d) {
         g.mesh.visible = false;
         if (g.pool) g.pool.visible = false;
       }
+      for (const s of ventFx.cSteam) s.mesh.visible = false;
     }
     geyserHiss(0);
   }
@@ -1774,6 +1850,7 @@ export function create3DScene(world, host, renderer2d) {
         ventFx.steam.visible = false;
         ventFx.bubbles.visible = false;
         for (const g of ventFx.geysers) g.mesh.visible = false;
+        for (const s of ventFx.cSteam) s.mesh.visible = false;
       }
       geyserHiss(0);
       return;
@@ -1815,6 +1892,24 @@ export function create3DScene(world, host, renderer2d) {
       }
     }
     geyserHiss(erupting ? 0.5 : 0);
+    // 熔岩触河接触点：白汽大量翻涌，持续升腾
+    for (const s of ventFx.cSteam) {
+      if (s.born < 0) {
+        if (rand() > 0.18) continue;
+        s.born = now;
+        s.mesh.position.set(ventFx.contact.x + s.ox, 1.5, ventFx.contact.z + s.oz);
+        s.mesh.visible = true;
+      }
+      const q = (now - s.born) / 2600;
+      if (q >= 1) {
+        s.born = -1;
+        s.mesh.visible = false;
+        continue;
+      }
+      s.mesh.position.y += 0.09;
+      s.mesh.rotation.y += 0.012;
+      s.mesh.material.opacity = 0.5 * (1 - q);
+    }
     // 火口熔岩气泡：湖面呼吸式鼓包
     for (let n = 0; n < ventFx.bub.length; n++) {
       const b = ventFx.bub[n];
@@ -1841,6 +1936,11 @@ export function create3DScene(world, host, renderer2d) {
         scene.remove(g.pool);
         g.pool.geometry.dispose();
       }
+    }
+    for (const s of ventFx.cSteam) {
+      scene.remove(s.mesh);
+      s.mesh.geometry.dispose();
+      s.mesh.material.dispose();
     }
     for (const k in ventFx.mats) ventFx.mats[k].dispose();
     ventFx = null;

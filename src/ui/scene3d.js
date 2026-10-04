@@ -1808,12 +1808,12 @@ export function create3DScene(world, host, renderer2d) {
       bub.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, ph: rand() * Math.PI * 2, sp: 0.6 + rand() * 0.9, s: 0.7 + rand() * 0.9 });
     }
     scene.add(bubbles);
-    // 熔岩触河接触点：白汽大量翻涌（岩浆遇水的生死之交）
+    // 熔岩触河接触点：白汽大量翻涌（岩浆遇水的生死之交），16 团无缝循环
     const cSteam = [];
-    for (let n = 0; n < 10; n++) {
+    for (let n = 0; n < 16; n++) {
       const m = new THREE.Mesh(
-        new THREE.BoxGeometry(2.4, 2.4, 2.4),
-        new THREE.MeshLambertMaterial({ color: 0xcfd8e2, transparent: true, opacity: 0.5 })
+        new THREE.BoxGeometry(3.2, 3.2, 3.2),
+        new THREE.MeshLambertMaterial({ color: 0xe8eef4, transparent: true, opacity: 0.55 })
       );
       m.visible = false;
       scene.add(m);
@@ -1892,23 +1892,23 @@ export function create3DScene(world, host, renderer2d) {
       }
     }
     geyserHiss(erupting ? 0.5 : 0);
-    // 熔岩触河接触点：白汽大量翻涌，持续升腾
+    // 熔岩触河接触点：白汽大量翻涌，16 团无缝循环（错峰起步+脉冲缩放+侧摆升腾）
     for (const s of ventFx.cSteam) {
       if (s.born < 0) {
-        if (rand() > 0.18) continue;
-        s.born = now;
-        s.mesh.position.set(ventFx.contact.x + s.ox, 1.5, ventFx.contact.z + s.oz);
+        s.born = now - rand() * 2600; // 错峰起步，开局汽柱即在翻涌
+        s.mesh.position.set(ventFx.contact.x + s.ox, 1 + rand() * 2, ventFx.contact.z + s.oz);
         s.mesh.visible = true;
       }
       const q = (now - s.born) / 2600;
       if (q >= 1) {
-        s.born = -1;
-        s.mesh.visible = false;
-        continue;
+        s.born = now - rand() * 600; // 无缝续接不断档
+        s.mesh.position.set(ventFx.contact.x + s.ox, 1 + rand() * 2, ventFx.contact.z + s.oz);
       }
-      s.mesh.position.y += 0.09;
-      s.mesh.rotation.y += 0.012;
-      s.mesh.material.opacity = 0.5 * (1 - q);
+      s.mesh.position.y += 0.14;
+      s.mesh.position.x += Math.sin(now * 0.002 + s.ox) * 0.08;
+      s.mesh.rotation.y += 0.015;
+      s.mesh.scale.setScalar((1 + Math.sin(now * 0.004 + s.oz) * 0.25) * (1 - q * 0.35));
+      s.mesh.material.opacity = 0.55 * (1 - q);
     }
     // 火口熔岩气泡：湖面呼吸式鼓包
     for (let n = 0; n < ventFx.bub.length; n++) {

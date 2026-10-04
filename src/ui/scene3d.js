@@ -2243,8 +2243,8 @@ export function create3DScene(world, host, renderer2d) {
     const hutA = lakeA + Math.PI * 1.85;
     const hutX = Math.round(R + Math.cos(hutA) * R * 0.5);
     const hutZ = Math.round(R + Math.sin(hutA) * R * 0.5);
-    for (let dx = -4; dx <= 4; dx++) {
-      for (let dz = -4; dz <= 4; dz++) {
+    for (let dx = -5; dx <= 5; dx++) {
+      for (let dz = -5; dz <= 5; dz++) {
         const c = cols.get(key(hutX + dx, hutZ + dz));
         if (c && !c.lake && !c.spring && c.h <= base + 4) {
           c.h = base;
@@ -2313,22 +2313,57 @@ export function create3DScene(world, host, renderer2d) {
         }
       }
     }
-    // 小雪屋：圆顶雪屋，空心环墙 + 门口 + 屋内暖光 + 冰窗 + 顶盖积雪
-    const domeLayers = [3, 3, 2.4, 1.7, 1];
-    for (let l = 0; l < domeLayers.length; l++) {
-      const r = domeLayers[l];
-      for (let dx = -3; dx <= 3; dx++) {
-        for (let dz = -3; dz <= 3; dz++) {
-          const d = Math.sqrt(dx * dx + dz * dz);
-          if (d > r || d < r - 1) continue; // 空心环墙
-          if (l < 2 && dz === 3 && dx === 0) continue; // 门口（朝主峰反侧留待校正，先朝 +z）
-          arr.push({ x: hutX + dx, z: hutZ + dz, y0: base + l, h: 1, sx: 1, sz: 1, rgb: C_SNOWCAP, glow: false });
+    // 木造雪屋：两层木构小楼（原圆顶冰屋放大改建），门口朝主峰、
+    // 冰窗暖光、层间雪檐、金字塔雪顶、石烟囱
+    const hw = 3; // 墙半宽
+    const doorDirX = Math.abs(hutX - R) >= Math.abs(hutZ - R) ? Math.sign(hutX - R) || 1 : 0;
+    const doorDirZ = doorDirX === 0 ? Math.sign(hutZ - R) || 1 : 0;
+    for (let f = 0; f < 2; f++) {
+      const y0 = base + f * 4;
+      for (let dx = -hw; dx <= hw; dx++) {
+        for (let dz = -hw; dz <= hw; dz++) {
+          const edge = Math.abs(dx) === hw || Math.abs(dz) === hw;
+          if (!edge) continue;
+          // 一层门口（朝主峰面中央，两格高留空）
+          const doorFace = (doorDirX !== 0 && dx === -doorDirX * hw) || (doorDirX === 0 && dz === -doorDirZ * hw);
+          const doorSpot = doorDirX !== 0 ? dz === 0 : dx === 0;
+          if (f === 0 && doorFace && doorSpot && y0 < base + 2) continue;
+          // 二层冰窗（门面两肩 + 背面两扇）
+          const winFace = f === 1 && ((doorDirX !== 0 && dx === -doorDirX * hw && Math.abs(dz) === 2) || (doorDirX === 0 && dz === -doorDirZ * hw && Math.abs(dx) === 2));
+          if (winFace) {
+            arr.push({ x: hutX + dx, z: hutZ + dz, y0: y0 + 1, h: 1, sx: 1, sz: 1, rgb: C_ICE, glow: true });
+            continue;
+          }
+          arr.push({ x: hutX + dx, z: hutZ + dz, y0, h: 1, sx: 1, sz: 1, rgb: C_WOOD, glow: false });
+        }
+      }
+      // 层间雪檐：墙面顶一圈外挑 0.5 格
+      for (let dx = -hw - 1; dx <= hw + 1; dx++) {
+        for (let dz = -hw - 1; dz <= hw + 1; dz++) {
+          const rim = Math.abs(dx) === hw + 1 || Math.abs(dz) === hw + 1;
+          const edge = Math.abs(dx) === hw || Math.abs(dz) === hw;
+          if (!edge && !rim) continue;
+          if (edge && rim) continue;
+          arr.push({ x: hutX + dx, z: hutZ + dz, y0: y0 + 3, h: 0.3, sx: 1, sz: 1, rgb: C_SNOWCAP, glow: false });
         }
       }
     }
-    arr.push({ x: hutX, z: hutZ, y0: base + domeLayers.length, h: 0.4, sx: 1.3, sz: 1.3, rgb: C_SNOWCAP, glow: false }); // 顶盖积雪
-    arr.push({ x: hutX, z: hutZ, y0: base + 0.5, h: 0.5, sx: 1, sz: 1, rgb: [255, 190, 110], glow: true }); // 屋内暖光
-    arr.push({ x: hutX + 3, z: hutZ, y0: base + 1.2, h: 0.6, sx: 0.8, sz: 0.8, rgb: C_ICE, glow: true }); // 冰窗透光
+    // 金字塔雪顶（实心堆叠，雪白压顶）
+    for (let l = 0; l <= 4; l++) {
+      const r = hw + 1 - l;
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          arr.push({ x: hutX + dx, z: hutZ + dz, y0: base + 7 + l, h: 0.8, sx: 1, sz: 1, rgb: C_SNOWCAP, glow: false });
+        }
+      }
+    }
+    // 石烟囱 + 屋内两层暖光 + 门旁灯
+    for (let y = base + 6; y <= base + 11; y++) {
+      arr.push({ x: hutX + 1, z: hutZ - 1, y0: y, h: 1, sx: 0.9, sz: 0.9, rgb: C_STONE, glow: false });
+    }
+    arr.push({ x: hutX + 1, z: hutZ - 1, y0: base + 12, h: 0.4, sx: 1.1, sz: 1.1, rgb: C_SNOWCAP, glow: false });
+    arr.push({ x: hutX, z: hutZ, y0: base + 1.2, h: 0.5, sx: 0.8, sz: 0.8, rgb: [255, 190, 110], glow: true });
+    arr.push({ x: hutX, z: hutZ, y0: base + 5.2, h: 0.5, sx: 0.8, sz: 0.8, rgb: [255, 190, 110], glow: true });
     // 雪原生态：雾凇松林（低地错落的积雪塔冠松，避开雪屋与桥带）
     const pines = [];
     for (let tries = 0; tries < 700 && pines.length < 40; tries++) {

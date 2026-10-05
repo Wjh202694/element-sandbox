@@ -2252,6 +2252,35 @@ export function create3DScene(world, host, renderer2d) {
         }
       }
     }
+    // 另三座房屋地基：冰晶塔楼 / 石砌小屋 / 萨米帐篷（组装前平整，错开湖与桥带）
+    const houseSpots = [];
+    const towerP = {
+      x: Math.round(R + Math.cos(hutA + 0.7) * R * 0.52),
+      z: Math.round(R + Math.sin(hutA + 0.7) * R * 0.52),
+    };
+    const cottageP = {
+      x: Math.round(R + Math.cos(hutA - 0.8) * R * 0.5),
+      z: Math.round(R + Math.sin(hutA - 0.8) * R * 0.5),
+    };
+    const tentP = {
+      x: Math.round(R + Math.cos(lakeA + 2.2) * R * 0.55),
+      z: Math.round(R + Math.sin(lakeA + 2.2) * R * 0.55),
+    };
+    const clearPatch = (px0, pz0, rad) => {
+      for (let dx = -rad; dx <= rad; dx++) {
+        for (let dz = -rad; dz <= rad; dz++) {
+          const c = cols.get(key(px0 + dx, pz0 + dz));
+          if (c && !c.lake && !c.spring && c.h <= base + 4) {
+            c.h = base;
+            c.cap = C_SNOW;
+          }
+        }
+      }
+    };
+    clearPatch(towerP.x, towerP.z, 3);
+    clearPatch(cottageP.x, cottageP.z, 3);
+    clearPatch(tentP.x, tentP.z, 3);
+    houseSpots.push([towerP.x, towerP.z], [cottageP.x, cottageP.z], [tentP.x, tentP.z]);
     // 组装实例：石基 + 雪身 + 顶盖
     for (const [k, c] of cols) {
       const i = Math.floor(k / 1000);
@@ -2364,6 +2393,62 @@ export function create3DScene(world, host, renderer2d) {
     arr.push({ x: hutX + 1, z: hutZ - 1, y0: base + 12, h: 0.4, sx: 1.1, sz: 1.1, rgb: C_SNOWCAP, glow: false });
     arr.push({ x: hutX, z: hutZ, y0: base + 1.2, h: 0.5, sx: 0.8, sz: 0.8, rgb: [255, 190, 110], glow: true });
     arr.push({ x: hutX, z: hutZ, y0: base + 5.2, h: 0.5, sx: 0.8, sz: 0.8, rgb: [255, 190, 110], glow: true });
+    // ① 冰晶塔楼：空心环墙木塔 + 冰锥顶 + 塔内暖光
+    {
+      for (let l = 0; l < 5; l++) {
+        const r = 2 - Math.floor(l / 2);
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dz = -r; dz <= r; dz++) {
+            if (Math.abs(dx) !== r && Math.abs(dz) !== r && l < 4) continue;
+            arr.push({ x: towerP.x + dx, z: towerP.z + dz, y0: base + l, h: 1, sx: 1, sz: 1, rgb: l < 4 ? C_WOOD : C_ICE, glow: false });
+          }
+        }
+      }
+      for (let l = 0; l < 3; l++) {
+        const r = 2 - l;
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dz = -r; dz <= r; dz++) {
+            arr.push({ x: towerP.x + dx, z: towerP.z + dz, y0: base + 5 + l, h: 0.7, sx: 1, sz: 1, rgb: C_ICE, glow: false });
+          }
+        }
+      }
+      arr.push({ x: towerP.x, z: towerP.z, y0: base + 1.5, h: 0.5, sx: 0.7, sz: 0.7, rgb: [255, 190, 110], glow: true });
+    }
+    // ② 石砌小屋：五宽石墙 + 木檐雪顶 + 门口 + 暖光
+    {
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          const edge = Math.abs(dx) === 2 || Math.abs(dz) === 2;
+          if (!edge) continue;
+          if (dz === 2 && dx === 0) continue;
+          arr.push({ x: cottageP.x + dx, z: cottageP.z + dz, y0: base, h: 2.5, sx: 1, sz: 1, rgb: C_STONE, glow: false });
+        }
+      }
+      for (let dx = -3; dx <= 3; dx++) {
+        for (let dz = -3; dz <= 3; dz++) {
+          const rim = Math.abs(dx) === 3 || Math.abs(dz) === 3;
+          if (!rim) continue;
+          arr.push({ x: cottageP.x + dx, z: cottageP.z + dz, y0: base + 2.5, h: 0.3, sx: 1, sz: 1, rgb: C_WOOD, glow: false });
+          arr.push({ x: cottageP.x + dx, z: cottageP.z + dz, y0: base + 2.8, h: 0.3, sx: 1, sz: 1, rgb: C_SNOWCAP, glow: false });
+        }
+      }
+      arr.push({ x: cottageP.x, z: cottageP.z, y0: base + 1, h: 0.5, sx: 0.7, sz: 0.7, rgb: [255, 190, 110], glow: true });
+    }
+    // ③ 萨米帐篷：明暗相间环层收分的锥帐 + 门口
+    {
+      const lay = [3, 2.2, 1.5, 0.8];
+      for (let l = 0; l < lay.length; l++) {
+        const r = lay[l];
+        for (let dx = -3; dx <= 3; dx++) {
+          for (let dz = -3; dz <= 3; dz++) {
+            const d = Math.sqrt(dx * dx + dz * dz);
+            if (d > r || d < r - 1.2) continue;
+            if (l === 0 && dz === 3 && Math.abs(dx) <= 0) continue;
+            arr.push({ x: tentP.x + dx, z: tentP.z + dz, y0: base + l * 1.2, h: 1.2, sx: 1, sz: 1, rgb: l % 2 ? C_PINE : C_SNOWCAP, glow: false });
+          }
+        }
+      }
+    }
     // 雪原生态：雾凇松林（低地错落的积雪塔冠松，避开雪屋与桥带）
     const pines = [];
     for (let tries = 0; tries < 700 && pines.length < 40; tries++) {
@@ -2373,7 +2458,9 @@ export function create3DScene(world, host, renderer2d) {
       const j = Math.round(R + Math.sin(a) * rr);
       const c = cols.get(key(i, j));
       if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (houseSpots.some((h) => Math.hypot(h[0] - i, h[1] - j) < 6)) continue;
       if (Math.hypot(i - hutX, j - hutZ) < 7) continue;
+      if (houseSpots.some((h) => Math.hypot(h[0] - i, h[1] - j) < 6)) continue;
       if (pines.some((p) => Math.abs(p[0] - i) < 4 && Math.abs(p[1] - j) < 4)) continue;
       pines.push([i, j]);
       const trunk = 2 + ((rand() * 2) | 0);
@@ -2394,6 +2481,7 @@ export function create3DScene(world, host, renderer2d) {
       const j = Math.round(R + Math.sin(a) * rr);
       const c = cols.get(key(i, j));
       if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (houseSpots.some((h) => Math.hypot(h[0] - i, h[1] - j) < 6)) continue;
       if (Math.hypot(i - hutX, j - hutZ) < 6) continue;
       const hgt = 0.8 + rand() * 1.6;
       arr.push({ x: i, z: j, y0: c.h, h: hgt, sx: 0.4, sz: 0.4, rgb: C_ICE, glow: false });
@@ -2409,6 +2497,7 @@ export function create3DScene(world, host, renderer2d) {
       const j = Math.round(R + Math.sin(a) * rr);
       const c = cols.get(key(i, j));
       if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (houseSpots.some((h) => Math.hypot(h[0] - i, h[1] - j) < 6)) continue;
       arr.push({ x: i, z: j, y0: c.h, h: 0.9, sx: 2 + rand() * 1.5, sz: 2 + rand() * 1.5, rgb: C_SNOWCAP, glow: false });
     }
     // 冻枯木：站立的枯树干（雾凇挂枝）
@@ -2419,6 +2508,7 @@ export function create3DScene(world, host, renderer2d) {
       const j = Math.round(R + Math.sin(a) * rr);
       const c = cols.get(key(i, j));
       if (!c || c.lake || c.spring || c.h > base + 5) continue;
+      if (houseSpots.some((h) => Math.hypot(h[0] - i, h[1] - j) < 6)) continue;
       arr.push({ x: i, z: j, y0: c.h, h: 3 + ((rand() * 2) | 0), sx: 0.4, sz: 0.4, rgb: C_WOOD, glow: false });
       arr.push({ x: i, z: j, y0: c.h + 2.5, h: 0.4, sx: 1.2, sz: 0.4, rgb: C_WOOD, glow: false });
       arr.push({ x: i, z: j, y0: c.h + 2.9, h: 0.3, sx: 1.2, sz: 0.4, rgb: C_SNOWCAP, glow: false });
@@ -2439,6 +2529,7 @@ export function create3DScene(world, host, renderer2d) {
       base,
       topY: base + skirtH + spikeH,
       spring: { x: springX - R + 0.5, y: 4, z: springZ - R + 0.5 },
+      lake: { x: lakeCx - R + 0.5, z: lakeCz - R + 0.5, r: lakeR },
       az0: rand() * Math.PI * 2,
     };
     return { arr, meta };
@@ -2475,8 +2566,43 @@ export function create3DScene(world, host, renderer2d) {
       flake: new THREE.MeshBasicMaterial({ color: 0xf4f8ff }),
       pour: new THREE.MeshBasicMaterial({ color: 0xeef4fb }),
       steam: new THREE.MeshLambertMaterial({ color: 0xb9c4ce, transparent: true, opacity: 0.4 }),
+      bear: new THREE.MeshLambertMaterial({ color: 0xf2eee4 }),
+      bearDark: new THREE.MeshLambertMaterial({ color: 0xd8d2c4 }),
     };
     const dummy = new THREE.Object3D();
+    // 北极熊：湖畔雪原游荡的奶油白大兽（4 只错峰错向）
+    const bears = [];
+    for (let n = 0; n < 4; n++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.5, 4), mats.bear);
+      body.position.y = 1.8;
+      g.add(body);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.2, 1.3), mats.bear);
+      head.position.set(0, 2.2, 2.6);
+      g.add(head);
+      const snout = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, 0.5), mats.bearDark);
+      snout.position.set(0, 2.05, 3.35);
+      g.add(snout);
+      for (const ex of [-0.45, 0.45]) {
+        const ear = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.25), mats.bearDark);
+        ear.position.set(ex, 2.95, 2.45);
+        g.add(ear);
+      }
+      for (const [lx, lz] of [[-0.85, 1.4], [0.85, 1.4], [-0.85, -1.4], [0.85, -1.4]]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.7), mats.bearDark);
+        leg.position.set(lx, 0.65, lz);
+        g.add(leg);
+      }
+      scene.add(g);
+      bears.push({
+        g, head,
+        ph: n * 1.9,
+        sp: 0.05 + rand() * 0.025,
+        r: snowMeta.lake.r + 2.5 + n * 1.5,
+        dir: n % 2 === 0 ? 1 : -1,
+        bob: rand() * 6,
+      });
+    }
     // 风吹雪：满天飘雪粒子（暴风雪时加速横扫）
     const flakes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mats.flake, 90);
     flakes.frustumCulled = false;
@@ -2503,13 +2629,14 @@ export function create3DScene(world, host, renderer2d) {
       scene.add(m);
       steam.push({ mesh: m, born: -1 });
     }
-    snowFx = { mats, flakes, fl, pour, dummy, steam, blizzardNow: false, avalancheNow: false };
+    snowFx = { mats, flakes, fl, pour, dummy, steam, bears, blizzardNow: false, avalancheNow: false };
   }
 
   function hideSnowFx() {
     if (snowFx) {
       snowFx.flakes.visible = false;
       snowFx.pour.visible = false;
+      for (const b of snowFx.bears) b.g.visible = false;
       for (const s of snowFx.steam) s.mesh.visible = false;
     }
     windHowl(0);
@@ -2527,6 +2654,19 @@ export function create3DScene(world, host, renderer2d) {
     snowFx.flakes.visible = true;
     snowFx.pour.visible = true;
     const t = now / 1000;
+    // 北极熊：绕冻湖雪原游荡（奶油白贴雪，靠动作辨形）
+    for (const b of snowFx.bears) {
+      const a = b.ph + t * b.sp * b.dir;
+      const rr = b.r + Math.sin(t * 0.23 + b.ph) * 3;
+      const bx = m.lake.x + Math.cos(a) * rr;
+      const bz = m.lake.z + Math.sin(a) * rr;
+      const col = cols.get(Math.round(R + bx) * 1000 + Math.round(R + bz));
+      const gy = col ? col.h : m.base;
+      b.g.position.set(bx, gy + 0.05 + Math.abs(Math.sin(t * 2 + b.ph)) * 0.1, bz);
+      b.g.rotation.y = Math.atan2(-Math.sin(a) * b.dir, Math.cos(a) * b.dir);
+      b.head.rotation.x = Math.sin(t * 1.3 + b.ph) * 0.18;
+      b.g.visible = true;
+    }
     const phase = world.frame % SNOW_CYCLE;
     const cycleN = Math.floor(world.frame / SNOW_CYCLE);
     const blizzard = cycleN % 2 === 1 && phase >= 900 && phase < 1500;
@@ -2607,6 +2747,10 @@ export function create3DScene(world, host, renderer2d) {
     for (const s of snowFx.steam) {
       scene.remove(s.mesh);
       s.mesh.geometry.dispose();
+    }
+    for (const b of snowFx.bears) {
+      scene.remove(b.g);
+      b.g.traverse?.((c) => c.geometry?.dispose());
     }
     for (const k in snowFx.mats) snowFx.mats[k].dispose();
     snowFx = null;

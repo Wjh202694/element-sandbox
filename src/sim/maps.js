@@ -194,13 +194,15 @@ function archipelagoGen(w) {
       fillRect(w, x, y, x + 1, y, E.WOOD);
     }
   }
-  // 灯塔：主岛顶石塔 + 玻璃灯室
-  const lhx = Math.round(W * 0.5);
+  // 灯塔：主岛上条纹石塔（石沙相间）+ 玻璃灯室 + 瞭望台
+  const lhx = Math.round(W * 0.5) + 6;
   const lhy = surfaceY(w, lhx);
-  fillRect(w, lhx, lhy - 4, lhx, lhy - 1, E.STONE);
-  put(w, lhx, lhy - 5, E.GLASS);
-  put(w, lhx, lhy - 6, E.STONE);
-  // 栈桥码头：自岛缘伸入海面（桩入水）
+  fillRect(w, lhx - 1, lhy - 8, lhx + 1, lhy - 1, E.STONE);
+  fillRect(w, lhx - 1, lhy - 6, lhx + 1, lhy - 5, E.SAND);
+  fillRect(w, lhx - 1, lhy - 3, lhx + 1, lhy - 2, E.SAND);
+  fillRect(w, lhx - 1, lhy - 10, lhx + 1, lhy - 9, E.GLASS);
+  fillRect(w, lhx - 2, lhy - 11, lhx + 2, lhy - 10, E.STONE);
+  // 栈桥码头：双排宽桥深入海面（桩入水）
   let pierX = -1;
   for (let x = 4; x < W - 4; x++) {
     const a = surfaceY(w, x);
@@ -213,10 +215,13 @@ function archipelagoGen(w) {
     }
   }
   if (pierX > 0) {
-    for (let x = pierX - 1; x <= pierX + 5; x++) put(w, x, sea - 1, E.WOOD);
-    for (let x = pierX + 1; x <= pierX + 5; x += 2) fillRect(w, x, sea, x, sea + 2, E.WOOD);
+    for (let x = pierX - 1; x <= pierX + 9; x++) {
+      put(w, x, sea - 1, E.WOOD);
+      put(w, x, sea - 2, E.WOOD);
+    }
+    for (let x = pierX + 1; x <= pierX + 9; x += 3) fillRect(w, x, sea, x, sea + 3, E.WOOD);
   }
-  // 高脚渔屋：找开阔海面架桩悬居
+  // 高脚渔屋：开阔海面上五宽桩基两层小屋（叶顶）
   let fhx = -1;
   for (let tries = 0; tries < 60 && fhx < 0; tries++) {
     const x = 2 + ((Math.random() * (W - 4)) | 0);
@@ -231,10 +236,12 @@ function archipelagoGen(w) {
     if (top === E.WATER && w.cells[sea * W + x] === E.WATER) fhx = x;
   }
   if (fhx > 0) {
-    for (const dx of [-1, 1]) fillRect(w, fhx + dx, sea + 1, fhx + dx, sea + 4, E.WOOD);
+    for (const dx of [-2, 0, 2]) fillRect(w, fhx + dx, sea + 1, fhx + dx, sea + 4, E.WOOD);
     fillRect(w, fhx - 2, sea, fhx + 2, sea, E.WOOD);
-    fillRect(w, fhx - 1, sea - 2, fhx + 1, sea - 1, E.WOOD);
-    fillRect(w, fhx - 2, sea - 3, fhx + 2, sea - 3, E.PLANT);
+    fillRect(w, fhx - 2, sea - 3, fhx + 2, sea - 1, E.WOOD);
+    fillRect(w, fhx - 1, sea - 4, fhx, sea - 4, E.EMPTY);
+    fillRect(w, fhx - 3, sea - 5, fhx + 3, sea - 5, E.PLANT);
+    fillRect(w, fhx - 2, sea - 6, fhx + 2, sea - 6, E.PLANT);
   }
 }
 
@@ -361,31 +368,34 @@ function volcanoGen(w) {
     const y = baseY + 1 + ((Math.random() * 2) | 0);
     blob(w, x, y, 2, 1, E.STONE);
   }
-  // 玄武岩石柱群：锥脚棱柱丛（避开熔岩）
+  // 玄武岩石柱群：五根双宽棱柱（高低错落）
   const bxx = cx + Math.round(halfW * 0.72);
-  for (const [ox, hgt] of [[-2, 4], [-1, 6], [0, 7], [1, 5], [2, 3]]) {
+  for (const [ox, hgt] of [[-3, 5], [-1, 9], [1, 11], [3, 7], [5, 4]]) {
     const cxn = bxx + ox;
     const cyn = surfaceY(w, cxn);
     if (w.cells[cyn * W + cxn] === E.LAVA) continue;
-    fillRect(w, cxn, cyn - hgt, cxn, cyn - 1, E.STONE);
+    fillRect(w, cxn, cyn - hgt, cxn + 1, cyn - 1, E.STONE);
   }
-  // 石砌瞭望塔：左肩坡上的岗哨（玻璃瞭望口）
+  // 石砌瞭望塔：左肩坡上的五宽岗哨（垛口+玻璃瞭望口）
   const wtx = cx - Math.round(halfW * 0.55);
   const wty = surfaceY(w, wtx);
   if (w.cells[wty * W + wtx] !== E.LAVA) {
-    fillRect(w, wtx - 1, wty - 5, wtx + 1, wty - 1, E.STONE);
-    put(w, wtx, wty - 6, E.GLASS);
-    put(w, wtx - 1, wty - 6, E.STONE);
-    put(w, wtx + 1, wty - 6, E.STONE);
+    fillRect(w, wtx - 2, wty - 6, wtx + 2, wty - 1, E.STONE);
+    fillRect(w, wtx - 2, wty - 7, wtx + 2, wty - 7, E.STONE);
+    put(w, wtx - 1, wty - 7, E.EMPTY);
+    put(w, wtx + 1, wty - 7, E.EMPTY);
+    put(w, wtx, wty - 8, E.GLASS);
   }
-  // 环形石祭坛：锥脚前的祭台
+  // 环形熔岩石祭坛：石环环抱中央熔岩池（长明圣火）
   const axx = cx - Math.round(halfW * 1.5);
   const ayy = surfaceY(w, axx);
-  for (let a2 = 0; a2 < 12; a2++) {
-    const aa = (a2 / 12) * Math.PI * 2;
-    put(w, axx + Math.round(Math.cos(aa) * 4), ayy - 1 + Math.round(Math.sin(aa) * 2), E.STONE);
+  for (let a2 = 0; a2 < 16; a2++) {
+    const aa = (a2 / 16) * Math.PI * 2;
+    const sx0 = axx + Math.round(Math.cos(aa) * 6);
+    const sy0 = ayy - 1 + Math.round(Math.sin(aa) * 3);
+    fillRect(w, sx0, sy0 - 1, sx0, sy0, E.STONE);
   }
-  fillRect(w, axx - 1, ayy - 1, axx + 1, ayy - 1, E.STONE);
+  fillRect(w, axx - 1, ayy - 1, axx + 1, ayy, E.LAVA);
 }
 
 // 周期喷发：末段火口冒烟前兆，循环起点抛射熔岩
@@ -546,14 +556,17 @@ function forest(w) {
       }
     }
   }
-  // 观景木亭：平台四柱草顶
+  // 观景木亭：双层草顶大亭（宽平台+四粗柱+石凳）
   const gx = Math.round(W * 0.63);
   const gy = surf[gx];
-  fillRect(w, gx - 2, gy - 1, gx + 2, gy - 1, E.WOOD);
-  for (const dx of [-2, 2]) {
-    fillRect(w, gx + dx, gy - 3, gx + dx, gy - 2, E.WOOD);
+  fillRect(w, gx - 4, gy - 1, gx + 4, gy - 1, E.WOOD);
+  for (const dx of [-3, 3]) {
+    fillRect(w, gx + dx, gy - 4, gx + dx, gy - 2, E.WOOD);
+    put(w, gx + dx + (dx > 0 ? -1 : 1), gy - 1, E.STONE);
   }
-  fillRect(w, gx - 3, gy - 4, gx + 3, gy - 4, E.PLANT);
+  fillRect(w, gx - 4, gy - 5, gx + 4, gy - 5, E.PLANT);
+  fillRect(w, gx - 2, gy - 6, gx + 2, gy - 6, E.PLANT);
+  fillRect(w, gx - 1, gy - 2, gx + 1, gy - 2, E.STONE);
   // 池上拱桥：找最长连片水面，宽度适中（4~22 格）才搭桥——海岸长水带不搭
   let bestA = -1;
   let bestB = -1;
@@ -595,24 +608,25 @@ function forest(w) {
       bestTop = pyTop;
     }
   }
-  if (bestA > 0 && bestLen >= 4 && bestLen <= 22) {
-    for (let x = bestA - 1; x <= bestB + 1; x++) {
-      const t = (x - bestA + 1) / (bestLen + 2);
-      const arch = Math.round(Math.sin(t * Math.PI) * 2);
-      fillRect(w, x, bestTop - 1 - arch, x, bestTop - arch, E.WOOD);
+  if (bestA > 0 && bestLen >= 4 && bestLen <= 30) {
+    for (let x = bestA - 2; x <= bestB + 2; x++) {
+      const t = (x - bestA + 2) / (bestLen + 4);
+      const arch = Math.round(Math.sin(t * Math.PI) * 3);
+      fillRect(w, x, bestTop - 2 - arch, x, bestTop - arch, E.WOOD);
     }
   }
-  // 树屋：架在参天大树的主干上
+  // 树屋：参天大树腰间的两层木屋（宽平台+双层墙+叶顶+爬梯）
   const htx = Math.round(W * 0.78);
-  const hty = surf[htx] - Math.round(H * 0.3 * 0.62);
-  fillRect(w, htx - 1, hty, htx + 3, hty, E.WOOD);
-  fillRect(w, htx, hty - 1, htx + 2, hty - 1, E.WOOD);
-  fillRect(w, htx, hty - 2, htx + 2, hty - 2, E.WOOD);
-  fillRect(w, htx - 1, hty - 3, htx + 3, hty - 3, E.PLANT);
-  // 篱笆小径：木桩夹草径
-  for (let x = Math.round(W * 0.04); x < Math.round(W * 0.34); x += 3) {
+  const hty = surf[htx] - Math.round(H * 0.3 * 0.55);
+  fillRect(w, htx - 2, hty, htx + 4, hty, E.WOOD);
+  fillRect(w, htx, hty - 1, htx + 3, hty - 1, E.WOOD);
+  fillRect(w, htx, hty - 2, htx + 3, hty - 2, E.WOOD);
+  fillRect(w, htx - 1, hty - 3, htx + 4, hty - 3, E.PLANT);
+  fillRect(w, htx + 1, hty + 1, htx + 2, hty + 3, E.WOOD);
+  // 篱笆小径：木桩顶绿叶夹出园径
+  for (let x = Math.round(W * 0.03); x < Math.round(W * 0.3); x += 2) {
     put(w, x, surf[x] - 1, E.WOOD);
-    put(w, x + 1, surf[x] - 1, E.PLANT);
+    put(w, x, surf[x] - 2, E.PLANT);
   }
 }
 
@@ -682,31 +696,36 @@ function canyon(w) {
     const px = Math.round(W * fx);
     fillRect(w, px, plankY + 1, px, plankY + 2, E.WOOD);
   }
-  // 跨谷吊桥：横贯峡谷的木桥（栏柱成排）
+  // 跨谷吊桥：双沿厚桥 + 高栏 + 垂索吊件
   const bx0 = Math.round(W * 0.3);
   const bx1 = Math.round(W * 0.7);
   for (let x = bx0; x <= bx1; x++) {
-    put(w, x, plateau - 1, E.WOOD);
-    if (x % 4 === 0) {
-      put(w, x, plateau - 2, E.WOOD);
+    fillRect(w, x, plateau - 2, x, plateau - 1, E.WOOD);
+    if (x % 3 === 0) {
       put(w, x, plateau - 3, E.WOOD);
+      put(w, x, plateau - 4, E.WOOD);
     }
+    if (x % 6 === 3) fillRect(w, x, plateau, x, plateau + 3, E.WOOD);
   }
-  // 天然石拱：跨河石拱门（两壁起拱）
+  // 天然石拱：加厚大跨石拱门
   const ax0 = Math.round(W * 0.335);
   const ax1 = Math.round(W * 0.665);
   for (let x = ax0; x <= ax1; x++) {
     const t = (x - ax0) / (ax1 - ax0);
-    const ay = plateau - Math.round(Math.sin(t * Math.PI) * 3);
-    fillRect(w, x, ay, x, ay + 1, E.STONE);
+    const ay = plateau - Math.round(Math.sin(t * Math.PI) * 5);
+    fillRect(w, x, ay, x, ay + 2, E.STONE);
   }
-  // 崖壁洞穴：右壁凹室
+  // 崖壁洞穴：右壁大洞 + 木梁框
   const cvx = Math.round(W * 0.9);
-  for (let dx = 0; dx < 3; dx++) {
-    for (let dy = 0; dy < 2; dy++) {
+  for (let dx = 0; dx < 4; dx++) {
+    for (let dy = 0; dy < 3; dy++) {
       put(w, cvx - dx, plateau + 5 + dy, E.EMPTY);
     }
   }
+  put(w, cvx, plateau + 4, E.WOOD);
+  put(w, cvx - 1, plateau + 4, E.WOOD);
+  put(w, cvx - 2, plateau + 4, E.WOOD);
+  put(w, cvx - 3, plateau + 8, E.WOOD);
 }
 
 // 峡谷事件：谷雾 + 岩壁剥落坠河（沙沉河床，量小有界）
@@ -785,25 +804,31 @@ function desert(w) {
     fillRect(w, spx - 2, sy0 + 3, spx + 2, sy0 + 3, E.SAND);
     fillRect(w, spx - 1, sy0 + 2, spx + 1, sy0 + 2, E.OIL);
   }
-  // 金沙岩金字塔：六层收分的沙岩石丘地标
-  const pxx = Math.round(W * 0.75);
-  const pyy = surfaceY(w, pxx);
-  for (let l = 0; l < 6; l++) {
-    const r = 6 - l;
-    fillRect(w, pxx - r, pyy - 1 - l, pxx + r, pyy - 1 - l, E.SAND);
+  // 石砌金字塔：十二层二十九宽大地标（基座取两侧地表较低者，防悬空）
+  const pxx = Math.round(W * 0.8);
+  if (pxx > 16 && pxx < W - 16) {
+    const gL = surfaceY(w, pxx - 14);
+    const gR = surfaceY(w, pxx + 14);
+    const pBase = Math.max(gL, gR);
+    for (let l = 0; l < 12; l++) {
+      const r = 14 - l;
+      fillRect(w, pxx - r, pBase - 1 - l, pxx + r, pBase - 1 - l, E.STONE);
+    }
   }
-  // 石雕巨像：方碑坐像（身+头+前臂）
+  // 石雕巨像：四宽坐像（身+头+前臂+GLASS 眼）
   const sxx = Math.round(W * 0.35);
   const syy = surfaceY(w, sxx);
-  fillRect(w, sxx, syy - 5, sxx + 1, syy - 1, E.STONE);
-  fillRect(w, sxx, syy - 7, sxx + 1, syy - 5, E.STONE);
-  put(w, sxx - 1, syy - 3, E.STONE);
-  // 绿洲棕榈棚：双柱草顶凉棚
-  const phx = Math.round(W * 0.16) + 5;
+  fillRect(w, sxx, syy - 6, sxx + 2, syy - 1, E.STONE);
+  fillRect(w, sxx, syy - 9, sxx + 2, syy - 6, E.STONE);
+  fillRect(w, sxx - 2, syy - 4, sxx - 1, syy - 2, E.STONE);
+  put(w, sxx, syy - 8, E.GLASS);
+  put(w, sxx + 2, syy - 8, E.GLASS);
+  // 绿洲棕榈棚：四柱大凉棚 + 木桌
+  const phx = Math.round(W * 0.16) + 8;
   const phy = surfaceY(w, phx);
-  fillRect(w, phx - 1, phy - 3, phx - 1, phy - 1, E.WOOD);
-  fillRect(w, phx + 1, phy - 3, phx + 1, phy - 1, E.WOOD);
-  fillRect(w, phx - 2, phy - 4, phx + 2, phy - 4, E.PLANT);
+  for (const dx of [-2, 2]) fillRect(w, phx + dx, phy - 4, phx + dx, phy - 1, E.WOOD);
+  fillRect(w, phx - 3, phy - 5, phx + 3, phy - 5, E.PLANT);
+  fillRect(w, phx - 1, phy - 1, phx + 1, phy - 1, E.WOOD);
 }
 
 // 沙漠事件：沙暴横扫 + 绿洲蒸腾（无水净量）+ 油泉渗涨（有界）
@@ -932,27 +957,34 @@ function cityGen(w) {
     const top = groundY - Math.round(H * fh) - 2;
     fillRect(w, sx, top - 3, sx, top, E.METAL);
   }
-  // 钟塔：街口石塔 + 玻璃钟面 + 金属尖顶
-  const ctx0 = Math.round(W * 0.535);
-  fillRect(w, ctx0, groundY - 9, ctx0 + 1, groundY - 1, E.STONE);
-  put(w, ctx0, groundY - 8, E.GLASS);
-  put(w, ctx0 + 1, groundY - 8, E.GLASS);
-  fillRect(w, ctx0, groundY - 11, ctx0 + 1, groundY - 10, E.METAL);
-  // 高楼天桥：连接两栋楼的空中木廊（栏柱成排）
+  // 钟塔：六宽基座 + 四宽塔身 + 玻璃大钟 + 金属尖塔
+  const ctx0 = Math.round(W * 0.535) - 1;
+  fillRect(w, ctx0 - 1, groundY - 2, ctx0 + 4, groundY - 1, E.STONE);
+  fillRect(w, ctx0, groundY - 10, ctx0 + 3, groundY - 2, E.STONE);
+  fillRect(w, ctx0 + 1, groundY - 9, ctx0 + 2, groundY - 8, E.GLASS);
+  put(w, ctx0, groundY - 9, E.GLASS);
+  put(w, ctx0 + 3, groundY - 9, E.GLASS);
+  fillRect(w, ctx0 + 1, groundY - 13, ctx0 + 2, groundY - 10, E.METAL);
+  // 高楼天桥：双排桥面 + 玻璃栏 + 吊件
   const bb0 = Math.round(W * 0.76);
   const bb1 = Math.round(W * 0.8);
   const bby = groundY - Math.round(H * 0.2);
   for (let x = bb0; x <= bb1; x++) {
-    put(w, x, bby, E.WOOD);
-    if (x % 3 === 0) put(w, x, bby - 1, E.WOOD);
+    fillRect(w, x, bby, x, bby + 1, E.WOOD);
+    put(w, x, bby - 1, E.GLASS);
+    if (x % 3 === 0) put(w, x, bby + 2, E.WOOD);
   }
-  // 环形喷泉广场：石环环抱喷水柱
+  // 环形喷泉广场：双石环 + 中央玻璃水柱
   const fqx = Math.round(W * 0.3);
-  for (let a2 = 0; a2 < 14; a2++) {
-    const aa = (a2 / 14) * Math.PI * 2;
-    put(w, fqx + Math.round(Math.cos(aa) * 3), groundY - 1, E.STONE);
+  for (let a2 = 0; a2 < 18; a2++) {
+    const aa = (a2 / 18) * Math.PI * 2;
+    put(w, fqx + Math.round(Math.cos(aa) * 4), groundY - 1, E.STONE);
   }
-  fillRect(w, fqx, groundY - 2, fqx, groundY - 1, E.WATER);
+  for (let a2 = 0; a2 < 10; a2++) {
+    const aa = (a2 / 10) * Math.PI * 2;
+    put(w, fqx + Math.round(Math.cos(aa) * 2), groundY - 1, E.STONE);
+  }
+  fillRect(w, fqx, groundY - 3, fqx, groundY - 1, E.GLASS);
 }
 
 // 玻璃之城事件：街雾 + 雷暴夜天线引雷（金属导电的活演示）
@@ -1151,34 +1183,34 @@ function snowMountainGen(w) {
       if (w.cells[i] === E.PLANT && rand() < 0.75) w.set(i, E.SNOW);
     }
   }
-  // 两层木屋：木墙四层 + 冰窗 + 木顶 + 顶雪（雪落在木顶上站得住）+ 门洞
+  // 两层木屋：七宽双层木墙 + 门洞 + 冰窗×4 + 雪顶 + 石烟囱
   const hx0 = Math.round(W * 0.45);
   const hy0 = surf[hx0];
-  fillRect(w, hx0 - 1, hy0 - 4, hx0 + 2, hy0 - 1, E.WOOD);
-  fillRect(w, hx0 - 2, hy0 - 5, hx0 + 3, hy0 - 5, E.WOOD);
-  fillRect(w, hx0 - 1, hy0 - 6, hx0 + 2, hy0 - 6, E.SNOW);
-  put(w, hx0 - 1, hy0 - 3, E.ICE);
-  put(w, hx0 - 1, hy0 - 2, E.ICE);
-  put(w, hx0 + 1, hy0 - 3, E.ICE);
-  put(w, hx0 + 1, hy0 - 1, E.EMPTY);
-  put(w, hx0 + 1, hy0 - 2, E.EMPTY);
-  // 雪人 ×2：双宽底座防滑塌，冰晶头
-  for (const fx of [0.3, 0.62]) {
+  fillRect(w, hx0 - 3, hy0 - 6, hx0 + 3, hy0 - 1, E.WOOD);
+  fillRect(w, hx0 - 4, hy0 - 7, hx0 + 4, hy0 - 7, E.WOOD);
+  fillRect(w, hx0 - 3, hy0 - 8, hx0 + 3, hy0 - 8, E.SNOW);
+  fillRect(w, hx0 - 2, hy0 - 9, hx0 + 2, hy0 - 9, E.SNOW);
+  put(w, hx0 + 3, hy0 - 1, E.EMPTY);
+  put(w, hx0 + 3, hy0 - 2, E.EMPTY);
+  put(w, hx0 - 3, hy0 - 3, E.ICE);
+  put(w, hx0 - 3, hy0 - 5, E.ICE);
+  put(w, hx0 + 3, hy0 - 3, E.ICE);
+  put(w, hx0 + 3, hy0 - 5, E.ICE);
+  fillRect(w, hx0 - 2, hy0 - 12, hx0 - 1, hy0 - 8, E.STONE);
+  // 雪人 ×3：三层堆叠（宽底防滑塌，冰晶头）
+  for (const fx of [0.28, 0.56, 0.68]) {
     const sx0 = Math.round(W * fx);
     const sy0 = surfaceY(w, sx0);
-    put(w, sx0, sy0 - 1, E.SNOW);
-    put(w, sx0 + 1, sy0 - 1, E.SNOW);
-    put(w, sx0, sy0 - 2, E.SNOW);
-    put(w, sx0 + 1, sy0 - 2, E.SNOW);
+    for (const dx of [-1, 0, 1]) put(w, sx0 + dx, sy0 - 1, E.SNOW);
+    for (const dx of [0, 1]) put(w, sx0 + dx, sy0 - 2, E.SNOW);
     put(w, sx0, sy0 - 3, E.ICE);
   }
-  // 冰雕拱门：温泉畔的透光冰拱
-  const ia0 = Math.round(W * 0.19);
-  for (let x = ia0; x <= ia0 + 5; x++) {
-    const t = (x - ia0) / 5;
-    const ay = surfaceY(w, x) - Math.round(Math.sin(t * Math.PI) * 3) - 1;
-    put(w, x, ay, E.ICE);
-    put(w, x, ay + 1, E.ICE);
+  // 冰雕拱门：十宽双排透光冰拱
+  const ia0 = Math.round(W * 0.17);
+  for (let x = ia0; x <= ia0 + 9; x++) {
+    const t = (x - ia0) / 9;
+    const ay = surfaceY(w, x) - Math.round(Math.sin(t * Math.PI) * 4) - 1;
+    fillRect(w, x, ay, x, ay + 1, E.ICE);
   }
 }
 
